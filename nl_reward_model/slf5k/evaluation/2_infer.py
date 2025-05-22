@@ -222,7 +222,6 @@ def main():
         print(f"Validation data type: {type(val_data)}")
         print(f"Total validation samples: {len(val_data)}")
 
-        # 对于字典类型，打印第一个键值对的结构
         if isinstance(val_data, dict):
             first_key = next(iter(val_data))
             print("First item structure:", json.dumps({first_key: val_data[first_key]}, indent=2)[:200] + "...")
@@ -230,7 +229,6 @@ def main():
         print(f"Error loading validation data: {str(e)}")
         return
 
-    # 采样数据
     print("\nSampling data...")
     try:
         if isinstance(val_data, dict):
@@ -245,15 +243,12 @@ def main():
         print(f"Error sampling data: {str(e)}")
         return
 
-    # 准备批次数据
     results = []
 
-    # 使用tqdm显示进度
     for i in tqdm(range(0, len(sampled_data), args.batch_size)):
         batch_data = sampled_data[i:i + args.batch_size]
         responses = process_batch(model, tokenizer, batch_data, args.max_new_tokens, args.temperature)
 
-        # 打印每个批次的第一个预测结果
         print("\n" + "=" * 50)
         print(f"BATCH {i // args.batch_size + 1} - FIRST PREDICTION:")
         print("-" * 50)
@@ -261,11 +256,11 @@ def main():
         print(f"Generated Summary: {batch_data[0]['generated_summary']}")
         print(f"Model Response: {responses[0][:200]}...")
 
-        # 提取并打印第一个样本的单词评分
         try:
             word_scores = extract_word_scores(responses[0])
             print("\nWord Scores:")
-            for word, score in word_scores[:10]:  # 只打印前10个评分
+            for word, score in word_scores[:10]:
+                print(f"  • '{word}': {score}")
                 print(f"  • '{word}': {score}")
             if len(word_scores) > 10:
                 print(f"  ... and {len(word_scores) - 10} more words")
@@ -273,7 +268,6 @@ def main():
             print(f"Error extracting word scores: {e}")
         print("=" * 50)
 
-        # 保存结果
         for j, (data, response) in enumerate(zip(batch_data, responses)):
             results.append({
                 "index": i + j,
@@ -282,14 +276,12 @@ def main():
                 "model_response": response
             })
 
-    # Save results
     try:
         with open(args.output_path, "w") as f:
             json.dump(results, f, indent=2)
         print(f"\n✅ Results saved to: {args.output_path}")
     except Exception as e:
         print(f"Error saving results: {str(e)}")
-        # Try to save to a backup location
         backup_path = "./evaluation_results_backup.json"
         try:
             with open(backup_path, "w") as f:
