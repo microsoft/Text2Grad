@@ -97,46 +97,36 @@ class ScriptArguments:
     """
     The name of the Casual LM model we wish to fine with PPO
     """
-    base_model_name: Optional[str] = field(default="", metadata={"help": "The name of the base model to use."})
-    base_model_adapter_model: Optional[str] = field(default="",
-                                                    metadata={"help": "The name of the adapter model to use."})
-    reward_model_name: Optional[str] = field(default="", metadata={"help": "the reward model name"})
-    log_with: Optional[str] = field(default='wandb', metadata={"help": "use 'wandb' to log with wandb"})
-    learning_rate: Optional[float] = field(default=1e-5, metadata={"help": "the learning rate"})
-    lr_scheduler_type: Optional[str] = field(default="linear", metadata={"help": "the learning rate scheduler type"})
-    mini_batch_size: Optional[int] = field(default=1, metadata={"help": "the PPO minibatch size"})
-    batch_size: Optional[int] = field(default=32, metadata={"help": "the batch size"})
-    ppo_epochs: Optional[int] = field(default=4, metadata={"help": "the number of ppo epochs"})
-    gradient_accumulation_steps: Optional[int] = field(
-        default=1, metadata={"help": "the number of gradient accumulation steps"}
-    )
-    adafactor: Optional[bool] = field(default=False, metadata={"help": "whether to use the adafactor optimizer"})
-    early_stopping: Optional[bool] = field(default=False, metadata={"help": "whether to early stop"})
-    target_kl: Optional[float] = field(default=0.1, metadata={"help": "kl target for early stopping"})
-    reward_baseline: Optional[float] = field(
-        default=0.5,
-        metadata={"help": "a baseline value that is subtracted from the reward"},
-    )
-    batched_gen: Optional[bool] = field(default=True, metadata={"help": "whether to use the batched text gen"})
-    save_freq: Optional[int] = field(default=5, metadata={"help": "n steps to save the model"})
-    output_dir: Optional[str] = field(default="ckpt/superw_token_ppo", metadata={"help": "n steps to save the model"})
-    seed: Optional[int] = field(default=42, metadata={"help": "the seed"})
-
-    train_epochs: Optional[int] = field(default=2, metadata={"help": "number of epochs"})
-    steps: Optional[int] = field(default=1200, metadata={"help": "number of epochs"})
-    init_kl_coef: Optional[float] = field(
-        default=0.2,
-        metadata={"help": "Initial KL penalty coefficient (used for adaptive and linear control)"},
-    )
-    adap_kl_ctrl: Optional[bool] = field(default=True, metadata={"help": "Use adaptive KL control, otherwise linear"})
-    local_rank: Optional[int] = field(default=0, metadata={"help": "local rank"})
-    project_name: Optional[str] = field(default="superw_token_ppo", metadata={"help": "wandb project name"})
-    data_file_path: Optional[str] = field(default="", metadata={"help": "data file path"})
-    tracker_kwargs: Optional[str] = field(default=None, metadata={"help": "tracker kwargs of wandb"})
-    prompt_max_length: Optional[int] = field(default=1000, metadata={"help": "the length of prompt"})
-    answer_max_length: Optional[int] = field(default=500, metadata={"help": "the length of answer"})
-    kl_penalty: Optional[str] = field(default="full", metadata={"help": "way of kl penalty"})
-    mask_loss: Optional[str] = field(default="", metadata={"help": "mask_loss"})
+    base_model_name: Optional[str] = field(default="")
+    base_model_adapter_model: Optional[str] = field(default="")
+    reward_model_name: Optional[str] = field(default="")
+    log_with: Optional[str] = field(default='wandb')
+    learning_rate: Optional[float] = field(default=1e-5)
+    lr_scheduler_type: Optional[str] = field(default="linear")
+    mini_batch_size: Optional[int] = field(default=1)
+    batch_size: Optional[int] = field(default=32)
+    ppo_epochs: Optional[int] = field(default=4)
+    gradient_accumulation_steps: Optional[int] = field(default=1)
+    adafactor: Optional[bool] = field(default=False)
+    early_stopping: Optional[bool] = field(default=False)
+    target_kl: Optional[float] = field(default=0.1)
+    reward_baseline: Optional[float] = field(default=0.5)
+    batched_gen: Optional[bool] = field(default=True)
+    save_freq: Optional[int] = field(default=5)
+    output_dir: Optional[str] = field(default="ckpt/superw_token_ppo")
+    seed: Optional[int] = field(default=42)
+    train_epochs: Optional[int] = field(default=2)
+    steps: Optional[int] = field(default=1200)
+    init_kl_coef: Optional[float] = field(default=0.2)
+    adap_kl_ctrl: Optional[bool] = field(default=True)
+    local_rank: Optional[int] = field(default=0)
+    project_name: Optional[str] = field(default="superw_token_ppo")
+    data_file_path: Optional[str] = field(default="")
+    tracker_kwargs: Optional[str] = field(default=None)
+    prompt_max_length: Optional[int] = field(default=1000)
+    answer_max_length: Optional[int] = field(default=500)
+    kl_penalty: Optional[str] = field(default="full")
+    mask_loss: Optional[str] = field(default="")
 
 
 parser = HfArgumentParser(ScriptArguments)
@@ -392,18 +382,12 @@ sent_kwargs = {
 }
 
 def check_and_fix_tensor(tensor, eos_id):
-    # Ensure input is a 1D Tensor
     if len(tensor.shape) != 1:
         raise ValueError("Input tensor must be 1D.")
-
-    # Check if there are multiple eos_id tokens at the end
     while len(tensor) > 1 and tensor[-1] == eos_id and tensor[-2] == eos_id:
-        tensor = tensor[:-1]  # Remove redundant eos_id tokens
-
-    # If there's no eos_id at the end, add one
+        tensor = tensor[:-1]
     if tensor[-1] != eos_id or len(tensor) == 0:
         tensor = torch.cat([tensor, torch.tensor([eos_id], dtype=tensor.dtype, device=tensor.device)])
-
     return tensor
 
 def prepare_input_data(queries, responses):
@@ -686,11 +670,9 @@ def process_response_with_spans(response, good_spans, poor_spans):
     if not response:
         return []
 
-    # Clean spans
     good_spans = clean_spans(good_spans)
     poor_spans = clean_spans(poor_spans)
 
-    # Check spans in response
     all_matched, unmatched_spans, matched_spans = check_spans_in_response(
         response, good_spans, poor_spans, fuzzy_threshold=0.7
     )
