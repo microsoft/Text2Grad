@@ -462,7 +462,7 @@ def normalize_text(text):
     if not text:
         return ""
 
-    # 移除多余空格
+
     text = re.sub(r'[,.;:!?"\'\(\)\[\]\{\}]', ' ', text)
     text = text.lower()
     text = re.sub(r'\s+', ' ', text)
@@ -702,21 +702,17 @@ def process_response_with_spans(response, good_spans, poor_spans):
             return [(word, 0.1) for word in words]
         print(f"Continuing with {len(matched_spans)} matched spans")
 
-    # Split response into words
     words = response.split()
     word_scores = [0.0] * len(words)
 
-    # Assign scores to each word
     for i in range(len(words)):
         word_pos = sum(len(w) + 1 for w in words[:i])
 
-        # Check if the position is in any matched span
         for span, (start, end, score) in matched_spans.items():
             if start <= word_pos < end:
                 word_scores[i] = score
                 break
 
-    # Create final word-score list
     word_score_list = [(word, score) for word, score in zip(words, word_scores)]
 
     return word_score_list
@@ -732,13 +728,10 @@ def extract_spans_from_reward_model_output(text_to_parse):
         dict: Dictionary containing textual_feedback, good_spans, and poor_spans; returns None if parsing fails
     """
     try:
-        # Try direct JSON parsing
         json_result = load_json_from_string(text_to_parse, log_details=False)
 
         if json_result and isinstance(json_result, dict):
-            # Check if it contains the required keys
             if "textual_feedback" in json_result:
-                # Ensure good_spans and poor_spans are lists
                 good_spans = json_result.get("good_spans", [])
                 poor_spans = json_result.get("poor_spans", [])
 
@@ -753,7 +746,6 @@ def extract_spans_from_reward_model_output(text_to_parse):
                     "poor_spans": poor_spans
                 }
 
-        # If direct parsing fails, try using regular expressions
         textual_feedback_pattern = r'"textual_feedback"\s*:\s*"([^"]*)"'
         good_spans_pattern = r'"good_spans"\s*:\s*\[(.*?)\]'
         poor_spans_pattern = r'"poor_spans"\s*:\s*\[(.*?)\]'
@@ -803,7 +795,6 @@ def inference_reward(reward_model, input_datas):
             results = reward_model(input_datas, **sent_kwargs)
             print("Finish inference.")
 
-            # Validate result format
             processed_results = []
 
             for result in results:
@@ -853,7 +844,6 @@ def load_json_from_string(text, log_details=True):
     Try to extract JSON from text using regex patterns first, then fallback to json.loads
     """
     try:
-        # First try to find JSON pattern with regex
         json_pattern = r'\{(?:[^{}]|(?:\{(?:[^{}]|(?:\{[^{}]*\}))*\}))*\}'
         matches = re.findall(json_pattern, text)
 
