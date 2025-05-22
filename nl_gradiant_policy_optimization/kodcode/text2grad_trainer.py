@@ -177,10 +177,8 @@ class Text2GradTrainer(BaseTrainer):
         """
         super().__init__(config)
 
-        # initial seed for reproducible experiments
         set_seed(config.seed)
 
-        # Step 0: check positional arguments validity
         if not isinstance(config, PPOConfig):
             raise ValueError(f"config must be a PPOConfig, got {type(config)}")
         if not isinstance(tokenizer, (PreTrainedTokenizerBase)):
@@ -191,7 +189,6 @@ class Text2GradTrainer(BaseTrainer):
             raise ValueError(
                 f"model must be a PreTrainedModelWrapper, got {type(model)} - supported architectures are: {SUPPORTED_ARCHITECTURES}"
             )
-        # Step 1: Initialize Accelerator
         self.accelerator = Accelerator(
             log_with=config.log_with,
             gradient_accumulation_steps=config.gradient_accumulation_steps,
@@ -599,7 +596,7 @@ class Text2GradTrainer(BaseTrainer):
 
             for generation, mask in zip(generations, padded_inputs["attention_mask"]):
                 if not return_prompt and not self.is_encoder_decoder:
-                    output = generation[len(mask):]  # remove prompt
+                    output = generation[len(mask):]
 
                 if remove_padding:
                     output = clean_special_tokens(output)
@@ -613,8 +610,6 @@ class Text2GradTrainer(BaseTrainer):
 
                             if len(output) > 0:
                                 clean_text = self.tokenizer.decode(output)
-                                if clean_text.strip():
-                                    print(f"Cleaned text: {clean_text}")
 
                 outputs.append(output)
 
@@ -886,9 +881,7 @@ class Text2GradTrainer(BaseTrainer):
                         for k in model_inputs_names:
                             mini_batch_dict[k] = batch_dict[k][mini_batch_inds]
 
-                        # Modified to handle DeepSpeed ZeRO stage 2 compatibility
                         if hasattr(self, 'is_deepspeed') and self.is_deepspeed:
-                            # For DeepSpeed, don't use accumulate context manager
                             model_inputs = {k: mini_batch_dict[k] for k in model_inputs_names}
 
                             logprobs, logits, vpreds, _, _ = self.batched_forward_pass(
@@ -910,10 +903,8 @@ class Text2GradTrainer(BaseTrainer):
                                 mask_loss
                             )
 
-                            # Clean up temporary variables
                             del logprobs, logits, vpreds, model_inputs
                         else:
-                            # For non-DeepSpeed, use the original accumulate context manager
                             with self.accelerator.accumulate(self.model):
                                 model_inputs = {k: mini_batch_dict[k] for k in model_inputs_names}
 
@@ -936,10 +927,8 @@ class Text2GradTrainer(BaseTrainer):
                                     mask_loss
                                 )
 
-                                # Clean up temporary variables
                                 del logprobs, logits, vpreds, model_inputs
 
-                        # Clean up mini_batch_dict to free memory
                         del mini_batch_dict
                         if torch.cuda.is_available():
                             torch.cuda.empty_cache()
@@ -948,11 +937,9 @@ class Text2GradTrainer(BaseTrainer):
                         loss_ps.append(loss_p)
                         loss_vs.append(loss_v)
 
-                    # Clear cache after each backward batch
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
 
-                # typically, early stopping is done at the epoch level
                 if self.config.early_stopping:
                     policykl = train_stats["policy/policykl"]
                     early_stop = self._early_stop(policykl)
@@ -962,8 +949,6 @@ class Text2GradTrainer(BaseTrainer):
             # Save a copy of advantages for the final calculation
             advantages_for_return = batch_dict["advantages"].clone()
 
-            # Clean up batch_dict as it's no longer needed
-            # Save references to needed variables before deleting batch_dict
             saved_logprobs = batch_dict.get("logprobs", None)
             saved_ref_logprobs = batch_dict.get("ref_logprobs", None)
             del batch_dict
@@ -974,13 +959,11 @@ class Text2GradTrainer(BaseTrainer):
 
             t = time.time()
             train_stats = stack_dicts(all_stats)
-            # Clean up all_stats
             del all_stats
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
             train_stats["skip_word_percentage"] = float(sum(total_skip_words_nums) / len(total_skip_words_nums))
-            # reshape advantages/ratios such that they are not averaged.
             train_stats["policy/advantages"] = torch.flatten(train_stats["policy/advantages"]).unsqueeze(0)
             train_stats["policy/advantages"] = torch.nan_to_num(train_stats["policy/advantages"], WANDB_PADDING)
             train_stats["policy/ratio"] = torch.flatten(train_stats["policy/ratio"]).unsqueeze(0)
@@ -998,12 +981,10 @@ class Text2GradTrainer(BaseTrainer):
                 kls=kls,
             )
 
-            # Clean up variables no longer needed
             del saved_logprobs, saved_ref_logprobs, non_score_reward, train_stats, masks, kls
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-            # Gather/Reduce stats from all processes
             if self.is_distributed:
                 stats = self.gather_stats(stats)
             stats = stats_to_np(stats)
@@ -1015,22 +996,18 @@ class Text2GradTrainer(BaseTrainer):
                 self.config.batch_size * self.accelerator.num_processes,
             )
 
-            # Log the total ppo time
             timing["time/ppo/total"] = time.time() - t0
             stats.update(timing)
 
-            # post-process stats for tensorboard and other loggers
             if self.config.log_with != "wandb":
                 stats = convert_to_scalar(stats)
 
             if self.lr_scheduler is not None:
                 self.lr_scheduler.step()
 
-            # Final cache clearing at the end of step
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-            # Calculate average advantages for return
             avg_advantages = sum(sum(advantages_for_return)) / (advantages_for_return.shape[0] * advantages_for_return.shape[1])
             del advantages_for_return
             if torch.cuda.is_available():
@@ -1038,7 +1015,6 @@ class Text2GradTrainer(BaseTrainer):
 
             return stats, sum(loss_ps) / len(loss_ps), sum(loss_vs) / len(loss_vs), avg_advantages
         except Exception as e:
-            # 确保所有进程都知道发生了错误
             if self.is_distributed:
                 import torch.distributed as dist
                 dist.barrier()
@@ -1068,10 +1044,8 @@ class Text2GradTrainer(BaseTrainer):
         elif self.is_distributed:
             import torch.distributed as dist
 
-            # Wait for all processes to finish
             dist.barrier()
 
-            # all gather the policykl
             dist.all_reduce(policykl, dist.ReduceOp.SUM)
             policykl /= self.accelerator.num_processes
 
@@ -1083,12 +1057,10 @@ class Text2GradTrainer(BaseTrainer):
     def gather_stats(self, stats):
         import torch.distributed as dist
 
-        # 确保所有进程都到达这里
         dist.barrier()
 
         for k, v in stats.items():
             if isinstance(v, torch.Tensor):
-                # 添加错误处理
                 try:
                     dist.all_reduce(v.to(self.accelerator.device), dist.ReduceOp.SUM)
                     v /= self.accelerator.num_processes
@@ -1111,12 +1083,12 @@ class Text2GradTrainer(BaseTrainer):
             input_data["decoder_input_ids"] = decoder_inputs["input_ids"]
             input_data["decoder_attention_mask"] = decoder_inputs["attention_mask"]
         else:
-            input_ids = [torch.cat([q, r]) for q, r in zip(queries, responses)]  # 将question与answer部分拼接在一起
+            input_ids = [torch.cat([q, r]) for q, r in zip(queries, responses)]
             input_data = self.data_collator(
                 [{"input_ids": ids, "attention_mask": torch.ones_like(ids)} for ids in input_ids]
             ).to(self.current_device)
 
-        input_data.pop("labels", None)  # we don't want to compute LM losses
+        input_data.pop("labels", None) 
         return input_data
 
     @PPODecorators.empty_device_cache()
@@ -1132,7 +1104,6 @@ class Text2GradTrainer(BaseTrainer):
         """
         Calculate model outputs in multiple batches.
         """
-        # Clear cache at the beginning
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
@@ -1241,14 +1212,12 @@ class Text2GradTrainer(BaseTrainer):
             if response_masks is not None:
                 del response_masks_batch
             del token_ids, token_ids_list
-            # Clear cache after each batch
             if torch.cuda.is_available() and i % 2 == 1:  
                 torch.cuda.empty_cache()
 
         if not all_logprobs:
             raise ValueError("No valid batches processed, all_logprobs is empty")
 
-        # Final cache clearing
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
@@ -1276,7 +1245,6 @@ class Text2GradTrainer(BaseTrainer):
         """
         Train one PPO minibatch
         """
-        # Clear cache at the beginning
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
@@ -1286,7 +1254,6 @@ class Text2GradTrainer(BaseTrainer):
         )
         del old_logprobs, values, logprobs, logits, vpreds
 
-        # Explicit memory cleanup
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
@@ -1299,11 +1266,8 @@ class Text2GradTrainer(BaseTrainer):
             if self.accelerator.sync_gradients:
                 self.accelerator.clip_grad_norm_(self.model_params, self.config.max_grad_norm)
         self.optimizer.step()
-        # we call optimizer.zero_grad() every time and let `accelerator` handle accumulation
-        # see https://huggingface.co/docs/accelerate/usage_guides/gradient_accumulation#the-finished-code
         self.optimizer.zero_grad()
 
-        # Final cache clearing
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
@@ -1356,11 +1320,10 @@ class Text2GradTrainer(BaseTrainer):
         token_score = []
         total_skip_words_num = 0
 
-        # Filter out empty words
         filtered_word_list = []
         filtered_score_list = []
         for i, word in enumerate(word_list):
-            if word.strip():  # Only keep non-empty words
+            if word.strip(): 
                 filtered_word_list.append(word)
                 filtered_score_list.append(score_list[i])
 
@@ -1379,26 +1342,19 @@ class Text2GradTrainer(BaseTrainer):
             attempts = 0
             initial_token_index = token_index
 
-            #print(f"\nTrying to match word: {word_list[word_index]}")
-            #print(f"Starting from token index: {token_index}")
-
             while attempts < max_attempts:
                 for i in range(1, min(10, len(token_list) - token_index)):
-                    # Include all tokens in concatenation, including special characters
                     actual_tokens = token_list[token_index:token_index + i]
                     concatenated_tokens = ''.join(actual_tokens)
-                    current_word = word_list[word_index].replace("'","'").replace("'","'")  # Fixed the invalid comma character
+                    current_word = word_list[word_index].replace("'","'").replace("'","'")
 
                     if len(concatenated_tokens) > len(current_word) + 2:
                         continue
-
-                    #print(f"Attempt {attempts + 1}: {actual_tokens} ({concatenated_tokens}) -> {current_word}")
 
                     if concatenated_tokens.lower() == current_word.lower():
                         flag_matched = True
                         i_matched = i
                         wid_matched = word_index
-                        #print(f"Match found! Length: {i}")
                         break
 
                 if flag_matched:
@@ -1407,7 +1363,6 @@ class Text2GradTrainer(BaseTrainer):
                     attempts += 1
                     token_index += 1
                     if token_index == len(token_list):
-                        #print("Reached end of token list")
                         break
 
                 if attempts >= max_attempts:
@@ -1418,37 +1373,24 @@ class Text2GradTrainer(BaseTrainer):
                     break
 
             if flag_matched:
-                # Fill unmatched tokens with 0
                 zeros_count = token_index - last_match_token_ind
                 if zeros_count > 0:
-                    #print(f"Filling {zeros_count} unmatched tokens with 0")
                     token_score.extend([torch.tensor(0., device=score_list[wid_matched].device)] * zeros_count)
 
-                # Assign scores - special characters get 0, other tokens get the word score
-                #print(f"Assigning scores for matched tokens:")
                 for j in range(i_matched):
                     current_token = token_list[token_index + j]
                     if is_special_char(current_token):
-                        #print(f"  {current_token}: 0 (special char)")
                         token_score.append(torch.tensor(0., device=score_list[wid_matched].device))
                     else:
-                        #print(f"  {current_token}: {float(score_list[wid_matched])} (matched)")
                         token_score.append(score_list[wid_matched])
 
                 last_match_token_ind = token_index + i_matched
                 token_index += i_matched
                 word_index += 1
 
-        # Pad remaining tokens with 0
         if len(token_score) != len(token_list):
             padding_count = len(token_list) - len(token_score)
-            #print(f"\nPadding final {padding_count} tokens with 0")
             token_score.extend([torch.tensor(0., device=score_list[0].device)] * padding_count)
-
-        print("\n=== Final Results ===")
-        #print(f"Total skipped words: {total_skip_words_num}")
-        #print(f"Final score length: {len(token_score)}")
-        #print(f"Scores: {[float(s) for s in token_score]}")
 
         return token_score, total_skip_words_num
 
@@ -1458,7 +1400,6 @@ class Text2GradTrainer(BaseTrainer):
         for i in range(len(words)):
             words[i] = [word.lower() for word in words[i]]
 
-        # process all_tokens
         for i in range(len(all_tokens)):
             all_tokens[i] = [token.lower() for token in all_tokens[i]]
 
@@ -1492,10 +1433,7 @@ class Text2GradTrainer(BaseTrainer):
         for i, token_list in enumerate(answers_tokens):
             word_list = answers_words[i]
             score_list = answers_scores[i]
-
-            # Fix: Check if score_list is empty or if it's a 0-d tensor
             if isinstance(score_list, torch.Tensor) and score_list.dim() == 0:
-                # Handle 0-dimensional tensor case
                 default_device = score_list.device
                 token_non_score = [torch.tensor(0., device=default_device)] * max(0, answer_indices_tokens[i])
                 token_score = [torch.tensor(0., device=default_device)] * len(token_list)
@@ -1506,11 +1444,10 @@ class Text2GradTrainer(BaseTrainer):
                 token_score = [torch.tensor(0., device=default_device)] * len(token_list)
                 total_skip_words_num = 0
             else:
-                # Normal case - create zero tensors with the same device as the first score
                 token_non_score = [torch.tensor(0., device=score_list[0].device)] * answer_indices_tokens[i]
                 token_score, total_skip_words_num = self.assign_token_rewards(token_list, word_list, score_list)
 
-            total_skip_words_nums.append(float(total_skip_words_num / max(1, len(word_list))))  # Avoid division by zero
+            total_skip_words_nums.append(float(total_skip_words_num / max(1, len(word_list)))) 
 
             token_scores.append(token_non_score + token_score)
 
@@ -1548,20 +1485,16 @@ class Text2GradTrainer(BaseTrainer):
 
         for score, logprob, ref_logprob, mask in zip(scores, logprobs, ref_logprobs, masks):
             assert len(logprob) == len(score)
-            # compute KL penalty (from difference in logprobs)
-            kl = self._kl_penalty(logprob, ref_logprob)  # kl=0
+            kl = self._kl_penalty(logprob, ref_logprob)
             kls.append(kl)
-            non_score_reward = -self.kl_ctl.value * kl  # 0.2*0=0
+            non_score_reward = -self.kl_ctl.value * kl
             non_score_rewards.append(non_score_reward)
             reward = non_score_reward.clone()
-            # last_non_masked_index = mask.nonzero()[-1]
             non_masked_indices = mask.nonzero()
 
             for index in non_masked_indices:
                 reward[index] += score[index]
 
-            # reward is preference model score + KL penalty
-            # reward[last_non_masked_index] += score
             rewards.append(reward)
         return torch.stack(rewards), torch.stack(non_score_rewards), torch.stack(kls)
 
@@ -1784,7 +1717,7 @@ class Text2GradTrainer(BaseTrainer):
         """
 
         if not isinstance(rewards, torch.Tensor):
-            rewards = [reward.float().mean() for reward in rewards]  # TODO: add mask for rewards
+            rewards = [reward.float().mean() for reward in rewards] 
             rewards = torch.tensor(rewards).to(self.current_device)
         rewards = self.accelerator.gather(rewards).flatten()
 
