@@ -6,7 +6,6 @@ from tqdm import tqdm
 import os
 import argparse
 
-# Add this to handle the LOCAL_RANK error
 if "LOCAL_RANK" not in os.environ:
     os.environ["LOCAL_RANK"] = "0"
 
@@ -27,11 +26,9 @@ class QACDataset(Dataset):
     def __getitem__(self, ind):
         item = self.json_data[ind]
 
-        # Extract only question and solution, omit answer
         question = item["question"]
         solution = item["solution"]
 
-        # Format the template without exposing answer
         prompt = f'''Please analyze the following programming problem and solution:
 
 Problem:
@@ -62,20 +59,17 @@ Submitted Solution:
 }}
 ```
 '''
-        # Construct input format with chat template
         input_text = f"<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n{prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n"
 
-        # Tokenize and process
         tokens = self.tokenizer.tokenize(input_text)
         if len(tokens) > self.max_length:
             tokens = tokens[:self.max_length]
 
         input_ids = self.tokenizer.convert_tokens_to_ids(tokens)
 
-        # Add padding
         padding_len = self.max_length - len(input_ids)
-        input_ids = [self.pad_token_id] * padding_len + input_ids  # Left padding
-        attention_mask = [0] * padding_len + [1] * len(tokens)  # Corresponding mask
+        input_ids = [self.pad_token_id] * padding_len + input_ids  
+        attention_mask = [0] * padding_len + [1] * len(tokens)
 
         return {
             "input_ids": torch.tensor(input_ids, dtype=torch.long),
@@ -86,7 +80,6 @@ Submitted Solution:
 def parse_args():
     parser = argparse.ArgumentParser(description="Run inference with a language model on KodCode dataset")
     
-    # Model and data parameters
     parser.add_argument("--model_path", type=str, default="../ckpt/llama31-8B-span2span-v2/0_4000_merge",
                         help="Path to the model checkpoint")
     parser.add_argument("--dataset_path", type=str, 
@@ -95,7 +88,6 @@ def parse_args():
     parser.add_argument("--output_file", type=str, default="inference_results_0_4000.json",
                         help="Path to save the inference results")
     
-    # Inference parameters
     parser.add_argument("--batch_size", type=int, default=40,
                         help="Batch size for inference")
     parser.add_argument("--prompt_max_length", type=int, default=1000,
@@ -105,7 +97,6 @@ def parse_args():
     parser.add_argument("--max_new_tokens", type=int, default=350,
                         help="Maximum number of new tokens to generate")
     
-    # Hardware parameters
     parser.add_argument("--gpu_ids", type=str, default="0,1,2,3,4,5",
                         help="Comma-separated list of GPU IDs to use")
     parser.add_argument("--gpu_memory", type=str, default="30GiB",
@@ -115,45 +106,37 @@ def parse_args():
 
 
 def main():
-    # Parse command-line arguments
     args = parse_args()
     
-    # Set GPU devices
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_ids
     
-    # Set device - this is still useful for non-model operations
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Load model and tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.model_path)
     if not tokenizer.pad_token:
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.padding_side = "left"
 
-    # Create a custom device map to explicitly distribute across all GPUs
     num_gpus = torch.cuda.device_count()
     print(f"Number of available GPUs: {num_gpus}")
 
     if num_gpus > 1:
-        # Load model with explicit device mapping to distribute across all GPUs
         model = AutoModelForCausalLM.from_pretrained(
             args.model_path,
-            device_map="balanced",  # Use "balanced" instead of "auto" for better distribution
-            max_memory={i: args.gpu_memory for i in range(num_gpus)},  # Allocate memory per GPU
+            device_map="balanced",
+            max_memory={i: args.gpu_memory for i in range(num_gpus)},
             torch_dtype=torch.float16
         )
     else:
-        # Fallback to single GPU
         model = AutoModelForCausalLM.from_pretrained(
             args.model_path,
             device_map="auto",
             torch_dtype=torch.float16
         )
 
-    print(f"Model device map: {model.hf_device_map}")  # Print the device map to verify distribution
+    print(f"Model device map: {model.hf_device_map}")
 
-    # Load dataset
     valid_dataset = QACDataset(
         args.dataset_path,
         tokenizer=tokenizer,
@@ -162,16 +145,13 @@ def main():
     )
     valid_dataloader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False)
 
-    # Store results
     results = []
 
-    # Inference
     with torch.no_grad():
         for batch_idx, batch in tqdm(enumerate(valid_dataloader), desc="Inferencing"):
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
 
-            # Generate responses
             outputs = model.generate(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -180,9 +160,7 @@ def main():
                 eos_token_id=tokenizer.eos_token_id,
             )
 
-            # Decode outputs
             for i, output in enumerate(outputs):
-                # Find input length
                 input_length = input_ids[i].size(0)
                 assistant_response = tokenizer.decode(output[input_length:], skip_special_tokens=True)
 
@@ -227,7 +205,6 @@ def main():
                             "generated_feedback": ""
                         })
                 except json.JSONDecodeError:
-                    # If JSON parsing fails, save original response
                     results.append({
                         "generated_response": assistant_response,
                         "improvement_code": [],

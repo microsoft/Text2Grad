@@ -135,7 +135,6 @@ def extract_word_scores(response):
         word_score_list = response_dict.get("word_score_list", [])
 
         if isinstance(word_score_list, str):
-            # Parse string representation of tuples
             tuples = re.findall(r'\([\"\']?([^\"\',]+)[\"\']?,\s*(-?\d+)\)', word_score_list)
             return [(word, int(score)) for word, score in tuples]
         elif isinstance(word_score_list, list):
@@ -189,14 +188,12 @@ def extract_word_scores(response):
             if tuples:
                 return [(word, int(score)) for word, score in tuples]
 
-        # Try to extract JSON from text that might contain other content
         json_match = re.search(r'({[\s\S]*})', response)
         if json_match:
             try:
                 json_str = json_match.group(1)
                 json_data = json.loads(json_str)
                 if "word_score_list" in json_data:
-                    # Recursively call this function with the extracted JSON
                     return extract_word_scores(json_str)
             except json.JSONDecodeError:
                 pass
@@ -205,16 +202,12 @@ def extract_word_scores(response):
 
 
 def main():
-    # Parse command line arguments
     args = parse_args()
     
-    # Set GPU devices
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_ids
     
-    # 加载模型和tokenizer
     model, tokenizer = load_and_prepare_model(args.model_path)
 
-    # 加载验证集数据并添加调试信息
     print("\nLoading validation data...")
     try:
         with open(args.data_path, "r") as f:
