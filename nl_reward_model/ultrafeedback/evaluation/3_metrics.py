@@ -15,7 +15,6 @@ import logging
 import os
 from rouge_score import rouge_scorer
 
-# Set up logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -57,19 +56,14 @@ def calculate_metrics(ground_truth_list, extracted_list):
             logger.warning(f"Words at position {i} don't match: ground truth '{gt_word}' vs extracted '{ex_word}'")
             continue
 
-        # Update metrics for each score value
         for score in [1, -1, 0]:
-            # True Positive: both predicted and actual values are the current score
             if ex_score == score and gt_score == score:
                 metrics_by_score[score]["tp"] += 1
-            # False Positive: predicted value is the current score but actual value is not
             elif ex_score == score and gt_score != score:
                 metrics_by_score[score]["fp"] += 1
-            # False Negative: actual value is the current score but predicted value is not
             elif gt_score == score and ex_score != score:
                 metrics_by_score[score]["fn"] += 1
 
-    # Calculate precision, recall, and F1 for each score value
     result = {}
     total_tp = 0
     total_fp = 0
@@ -85,14 +79,11 @@ def calculate_metrics(ground_truth_list, extracted_list):
         total_fp += fp
         total_fn += fn
 
-        # Calculate precision and recall for current score value
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0
 
-        # Calculate F1 score
         f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
 
-        # Save results
         score_label = "positive" if score == 1 else "negative" if score == -1 else "neutral"
         result[score_label] = {
             "precision": precision,
@@ -103,7 +94,6 @@ def calculate_metrics(ground_truth_list, extracted_list):
             "fn": fn
         }
 
-    # Calculate overall metrics (unweighted average)
     overall_precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0
     overall_recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0
     overall_f1 = 2 * (overall_precision * overall_recall) / (overall_precision + overall_recall) if (overall_precision + overall_recall) > 0 else 0
@@ -161,7 +151,6 @@ def calculate_span_overlap_metrics(ground_truth_list, extracted_list):
     Returns:
         dict: Contains overlap metrics for good and poor spans
     """
-    # Helper function to extract spans, avoiding code duplication
     def extract_spans(word_score_list):
         good_spans = []
         poor_spans = []
@@ -169,29 +158,28 @@ def calculate_span_overlap_metrics(ground_truth_list, extracted_list):
         current_poor_span = []
 
         for i, (word, score) in enumerate(word_score_list):
-            if score == 1:  # good span
+            if score == 1:  
                 current_good_span.append((i, word))
-                if current_poor_span:  # end current poor span
+                if current_poor_span:  
                     if len(current_poor_span) > 0:
                         poor_spans.append(current_poor_span)
                     current_poor_span = []
-            elif score == -1:  # poor span
+            elif score == -1: 
                 current_poor_span.append((i, word))
-                if current_good_span:  # end current good span
+                if current_good_span: 
                     if len(current_good_span) > 0:
                         good_spans.append(current_good_span)
                     current_good_span = []
-            else:  # neutral span
-                if current_good_span:  # end current good span
+            else:  
+                if current_good_span:  
                     if len(current_good_span) > 0:
                         good_spans.append(current_good_span)
                     current_good_span = []
-                if current_poor_span:  # end current poor span
+                if current_poor_span:
                     if len(current_poor_span) > 0:
                         poor_spans.append(current_poor_span)
                     current_poor_span = []
 
-        # Handle potentially remaining spans
         if current_good_span:
             good_spans.append(current_good_span)
         if current_poor_span:
@@ -199,11 +187,9 @@ def calculate_span_overlap_metrics(ground_truth_list, extracted_list):
             
         return good_spans, poor_spans
     
-    # Extract spans from ground truth and extracted lists
     gt_good_spans, gt_poor_spans = extract_spans(ground_truth_list)
     ex_good_spans, ex_poor_spans = extract_spans(extracted_list)
     
-    # Calculate span-level metrics
     results = {
         "good_span": {
             "gt_count": len(gt_good_spans),
@@ -221,7 +207,6 @@ def calculate_span_overlap_metrics(ground_truth_list, extracted_list):
         }
     }
     
-    # Helper function to calculate span metrics
     def calculate_span_metrics(gt_spans, ex_spans, span_type):
         ious = []
         exact_match = 0
@@ -288,18 +273,14 @@ def evaluate_file(input_file, output_file):
     logger.info(f"Starting analysis of file: {input_file}")
 
     try:
-        # Read input file
         with open(input_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
         logger.info(f"Successfully loaded data with {len(data)} records")
 
-        # Store metrics for each record
         all_metrics = []
         all_rouge_scores = []
-        all_span_metrics = []  # New: store span metrics
-
-        # Track overall metrics
+        all_span_metrics = []  
         total_counts = {
             "positive": {"tp": 0, "fp": 0, "fn": 0},
             "negative": {"tp": 0, "fp": 0, "fn": 0},
@@ -314,7 +295,6 @@ def evaluate_file(input_file, output_file):
             "rougeL": {"precision": 0, "recall": 0, "fmeasure": 0}
         }
 
-        # Track span metrics
         total_span_metrics = {
             "good_span": {
                 "gt_count": 0, "ex_count": 0,
@@ -328,17 +308,14 @@ def evaluate_file(input_file, output_file):
             }
         }
 
-        # Process each record
         for i, result in enumerate(tqdm(data, desc="Calculating metrics")):
-            # Ensure record contains necessary fields
             if "ground_truth" not in result or "model_output" not in result:
                 logger.warning(f"Record {i} missing required fields, skipping")
                 continue
 
             ground_truth = result["ground_truth"]
-            extracted = result["model_output"]  # Using model_output instead of extracted
+            extracted = result["model_output"]  
 
-            # Ensure word_score_list exists
             if "word_score_list" not in ground_truth or "word_score_list" not in extracted:
                 logger.warning(f"Record {i} missing word_score_list, skipping")
                 continue
@@ -385,18 +362,16 @@ def evaluate_file(input_file, output_file):
                 "index": i,
                 "metrics": metrics,
                 "rouge_scores": rouge_scores,
-                "span_metrics": span_metrics,  # New: add span metrics
-                "post_length": len(result.get("prompt", "")),  # Using prompt instead of post
-                "response_length": len(result.get("response", ""))  # Using response instead of generated_summary
+                "span_metrics": span_metrics,  
+                "post_length": len(result.get("prompt", "")), 
+                "response_length": len(result.get("response", "")) 
             })
 
-            # Add to span metrics list
             all_span_metrics.append({
                 "index": i,
                 "span_metrics": span_metrics
             })
 
-        # Calculate overall metrics
         overall_metrics = {}
         for key in total_counts:
             tp = total_counts[key]["tp"]
@@ -416,7 +391,6 @@ def evaluate_file(input_file, output_file):
                 "fn": fn
             }
 
-        # Calculate overall span metrics
         overall_span_metrics = {}
         for span_type in ["good_span", "poor_span"]:
             gt_count = total_span_metrics[span_type]["gt_count"]
@@ -485,7 +459,6 @@ def evaluate_file(input_file, output_file):
                     if metric in m["span_metrics"][span_type]:
                         average_span_metrics[span_type][metric].append(m["span_metrics"][span_type][metric])
 
-        # Calculate average values for each category
         for key in average_metrics:
             for metric in ["precision", "recall", "f1"]:
                 average_metrics[key][metric] = np.mean(average_metrics[key][metric])
@@ -495,13 +468,11 @@ def evaluate_file(input_file, output_file):
                 if average_rouge[metric][score_type]:
                     average_rouge[metric][score_type] = np.mean(average_rouge[metric][score_type])
 
-        # Calculate average span metrics
         for span_type in average_span_metrics:
             for metric in average_span_metrics[span_type]:
                 if average_span_metrics[span_type][metric]:
                     average_span_metrics[span_type][metric] = np.mean(average_span_metrics[span_type][metric])
 
-        # Create summary
         summary = {
             "total_records": len(data),
             "valid_records": len(all_metrics),
@@ -509,29 +480,25 @@ def evaluate_file(input_file, output_file):
             "overall_metrics": overall_metrics,
             "average_metrics": average_metrics,
             "average_rouge": average_rouge,
-            "overall_span_metrics": overall_span_metrics,  # New: overall span metrics
-            "average_span_metrics": average_span_metrics   # New: average span metrics
+            "overall_span_metrics": overall_span_metrics,
+            "average_span_metrics": average_span_metrics
         }
 
-        # Save original data (with metrics)
         output_data_file = f"{os.path.splitext(output_file)[0]}_data.json"
         with open(output_data_file, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-        # Save summary
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(summary, f, ensure_ascii=False, indent=2)
 
         logger.info(f"Analysis completed, summary saved to: {output_file}")
         logger.info(f"Data with metrics saved to: {output_data_file}")
 
-        # Print summary
         logger.info("\nSummary:")
         logger.info(f"Total records: {summary['total_records']}")
         logger.info(f"Valid records: {summary['valid_records']}")
         logger.info(f"Valid ROUGE records: {summary['valid_rouge_records']}")
 
-        # Print metrics for each category
         for category in ["positive", "negative", "neutral", "overall"]:
             logger.info(f"\n{category.capitalize()} scoring:")
             logger.info("Overall metrics:")
@@ -543,7 +510,6 @@ def evaluate_file(input_file, output_file):
             logger.info(f"  Recall: {average_metrics[category]['recall']:.4f}")
             logger.info(f"  F1: {average_metrics[category]['f1']:.4f}")
 
-        # Print span metrics
         logger.info("\nSpan metrics:")
         for span_type in ["good_span", "poor_span"]:
             logger.info(f"\n{span_type.replace('_', ' ').capitalize()}:")
@@ -560,7 +526,6 @@ def evaluate_file(input_file, output_file):
             logger.info(f"  F1: {average_span_metrics[span_type]['f1']:.4f}")
             logger.info(f"   Average IOU: {average_span_metrics[span_type]['avg_iou']:.4f}")
 
-        # Print ROUGE metrics
         logger.info("\nROUGE metrics:")
         for metric in ["rouge1", "rouge2", "rougeL"]:
             logger.info(f"\n{metric.upper()}:")
@@ -568,22 +533,17 @@ def evaluate_file(input_file, output_file):
             logger.info(f"  Recall: {average_rouge[metric]['recall']:.4f}")
             logger.info(f"  F-measure: {average_rouge[metric]['fmeasure']:.4f}")
 
-        # Sort records by overall F1 value
         sorted_metrics = sorted(all_metrics, key=lambda x: x["metrics"]["overall"]["f1"])
 
-        # Print indices of lowest 5 records with lowest F1
         logger.info("\nIndices of lowest 5 records with lowest F1:")
         for m in sorted_metrics[:min(5, len(sorted_metrics))]:
             logger.info(f"   Record {m['index']}: F1 = {m['metrics']['overall']['f1']:.4f}")
 
-        # Print indices of highest 5 records with highest F1
         logger.info("\nIndices of highest 5 records with highest F1:")
         for m in sorted_metrics[-min(5, len(sorted_metrics)):]:
             logger.info(f"   Record {m['index']}: F1 = {m['metrics']['overall']['f1']:.4f}")
 
-        # Sort records by span F1 value
         if all_span_metrics:
-            # Sort by good span F1
             sorted_good_span = sorted(all_span_metrics, key=lambda x: x["span_metrics"]["good_span"]["f1"] if "f1" in x["span_metrics"]["good_span"] else 0)
 
             logger.info("\nGood Span F1 values of lowest 5 records:")
@@ -596,7 +556,6 @@ def evaluate_file(input_file, output_file):
                 f1 = m["span_metrics"]["good_span"].get("f1", 0)
                 logger.info(f"   Record {m['index']}: Good Span F1 = {f1:.4f}")
 
-            # Sort by poor span F1
             sorted_poor_span = sorted(all_span_metrics, key=lambda x: x["span_metrics"]["poor_span"]["f1"] if "f1" in x["span_metrics"]["poor_span"] else 0)
 
             logger.info("\nPoor Span F1 values of lowest 5 records:")
@@ -609,7 +568,6 @@ def evaluate_file(input_file, output_file):
                 f1 = m["span_metrics"]["poor_span"].get("f1", 0)
                 logger.info(f"   Record {m['index']}: Poor Span F1 = {f1:.4f}")
 
-        # If there are ROUGE records, sort by ROUGE-L F-measure and print highest/lowest records
         if all_rouge_scores:
             sorted_rouge = sorted(all_rouge_scores, key=lambda x: x["rouge_scores"]["rougeL"]["fmeasure"])
 
