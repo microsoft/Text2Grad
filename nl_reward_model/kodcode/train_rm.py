@@ -417,10 +417,8 @@ def main():
         "project_name": "kodcode-RM"
     }
     
-    # Create experiment directory if it doesn't exist
     os.makedirs(config["exp_dir"], exist_ok=True)
     
-    # Run training
     train(config)
 
 
