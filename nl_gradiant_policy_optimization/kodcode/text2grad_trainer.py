@@ -1136,7 +1136,6 @@ class Text2GradTrainer(BaseTrainer):
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-        # 此处的mask指示出有效的tokens的位置，用于后面求取lengthsampler
         bs = len(queries)
         fbs = self.config.mini_batch_size
         all_logprobs = []
@@ -1147,7 +1146,6 @@ class Text2GradTrainer(BaseTrainer):
 
         model.eval()
 
-        # 添加检查，确保bs > 0
         if bs == 0:
             raise ValueError("Empty batch received in batched_forward_pass")
 
@@ -1156,7 +1154,6 @@ class Text2GradTrainer(BaseTrainer):
             query_batch = queries[i * fbs: (i + 1) * fbs]
             response_batch = responses[i * fbs: (i + 1) * fbs]
 
-            # 检查当前批次是否为空
             if len(query_batch) == 0 or len(response_batch) == 0:
                 print(f"Warning: Empty batch at index {i}, skipping")
                 continue
@@ -1164,37 +1161,32 @@ class Text2GradTrainer(BaseTrainer):
             if response_masks is not None:
                 response_masks_batch = response_masks[i * fbs: (i + 1) * fbs]
 
-            # 运行模型前检查输入
             for k, v in input_kwargs.items():
                 if isinstance(v, torch.Tensor) and v.numel() == 0:
                     print(f"Warning: Empty tensor for {k} at batch {i}")
 
             logits, _, values = model(**input_kwargs)
 
-            # 检查logits是否为空
             if logits.numel() == 0:
                 print(f"Warning: Empty logits at batch {i}, skipping")
                 continue
 
-            # 取出logits对应的token
             token_ids = input_kwargs["input_ids"]
             token_ids_list = token_ids.tolist()
-            # 遍历每个样本的token ID序列
             for sample_token_ids in token_ids_list:
                 import re
-                # 将每个token ID转换为对应的单词或子词
                 tokens = [re.sub(r"[''‛']", "'", self.tokenizer.decode(token_id).strip()) for token_id in
                           sample_token_ids]
-                all_tokens.append(tokens)  # 得到q+a对应的tokens序列
+                all_tokens.append(tokens) 
 
-            if self.is_encoder_decoder:  # 不进入
+            if self.is_encoder_decoder: 
                 input_ids = input_kwargs["decoder_input_ids"]
                 attention_mask = input_kwargs["decoder_attention_mask"]
-            else:  # 进入
+            else: 
                 input_ids = input_kwargs["input_ids"]
                 attention_mask = input_kwargs["attention_mask"]
 
-            logprobs = logprobs_from_logits(logits[:, :-1, :], input_ids[:, 1:])  # 计算每个tokens的对数概率
+            logprobs = logprobs_from_logits(logits[:, :-1, :], input_ids[:, 1:]) 
             masks = torch.zeros_like(attention_mask)
             masks[:, :-1] = attention_mask[:, 1:]
 
@@ -1218,7 +1210,7 @@ class Text2GradTrainer(BaseTrainer):
                     start = 1
                     end = attention_mask[j, :].sum() - 1
                 else:
-                    start = len(query_batch[j]) - 1  # logprobs starts from the second query token
+                    start = len(query_batch[j]) - 1  
                     if attention_mask[j, 0] == 0:  # offset left padding
                         start += attention_mask[j, :].nonzero()[0]
                     end = start + len(response_batch[j])
@@ -1230,7 +1222,6 @@ class Text2GradTrainer(BaseTrainer):
 
                     for i in range(start, end):
                         if tokens[i] == '<|eot_id|>':
-                            # 找到EOS后，将end调整到EOS后一个位置
                             end = i + 1 if i < len(tokens) - 1 else i
                             break
                 masks[j, :start] = 0
@@ -1254,7 +1245,6 @@ class Text2GradTrainer(BaseTrainer):
             if torch.cuda.is_available() and i % 2 == 1:  
                 torch.cuda.empty_cache()
 
-        # 最终检查，确保列表不为空
         if not all_logprobs:
             raise ValueError("No valid batches processed, all_logprobs is empty")
 
@@ -1351,7 +1341,6 @@ class Text2GradTrainer(BaseTrainer):
 
     def assign_token_rewards(self, token_list, word_list, score_list):
         def is_special_char(token):
-            """检查是否为特殊字符"""
             special_chars = ['<|eot_id|>', '<|start_header_id|>',
                              '<|end_header_id|>']
             return (token in special_chars or token.startswith('<') or
@@ -1465,16 +1454,11 @@ class Text2GradTrainer(BaseTrainer):
 
 
     def rematch_scores(self, scores, words, all_tokens):
-        # 该函数利用从reward model处获得的word-level的得分变成token-level的score
-        # 使用嵌套的列表推导式将每个字符串转换为小写
-
-        print(f'收到的score：{scores}')
 
         for i in range(len(words)):
             words[i] = [word.lower() for word in words[i]]
 
         # process all_tokens
-        # 使用嵌套的列表推导式将每个字符串转换为小写,并覆写原来的all_tokens
         for i in range(len(all_tokens)):
             all_tokens[i] = [token.lower() for token in all_tokens[i]]
 
@@ -1485,7 +1469,6 @@ class Text2GradTrainer(BaseTrainer):
                 if (sublist[i] == '<|start_header_id|>' and
                         sublist[i + 1] == 'assistant' and
                         sublist[i + 2] == '<|end_header_id|>'):
-                    # 找到header后的第一个非空token位置
                     j = i + 3
                     while j < len(sublist) and sublist[j] == '':
                         j += 1
