@@ -36,7 +36,7 @@ Text2Grad consists of three main components:
 ```bash
 # Clone the repository
 git clone https://github.com/EdWangLoDaSc/Text2Grad-Reinforcement-Learning-from-Natural-Language-Feedback
-cd Text2Grad-Reinforcement-Learning-from-Natural-Language-Feedback
+cd Text2Grad
 
 # Install dependencies
 bash env.sh
@@ -70,7 +70,7 @@ We utilize the following open-source datasets in our research:
 ## Project Structure
 
 ```
-/Text2Grad-Reinforcement-Learning-from-Natural-Language-Feedback/
+/Text2Grad/
 ├── rm_data_anno/                 # Reward Model Data Annotation
 │   ├── kodCode/                  # Code Generation dataset processing
 │   ├── slf5k/                    # Summarization dataset processing
