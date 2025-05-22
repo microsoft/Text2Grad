@@ -57,7 +57,6 @@ def format_prompt(user_prompt, assistant_response):
 "poor_spans": ["phrase1", "phrase2",...]
 }}'''
 
-    # Construct input format
     return f"<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n{prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n"
 
 def parse_response(assistant_part):
@@ -88,7 +87,6 @@ def extract_spans_with_regex(text):
         span_pattern = r'(?:"([^"]*?)"|\'([^\']*?)\')'
         good_spans = [m[0] or m[1] for m in re.findall(span_pattern, good_spans_text)]
 
-    # Extract poor spans using regex
     poor_spans_pattern = r'"poor_spans"\s*:\s*\[(.*?)\]'
     poor_spans_match = re.search(poor_spans_pattern, text, re.DOTALL)
     poor_spans = []
