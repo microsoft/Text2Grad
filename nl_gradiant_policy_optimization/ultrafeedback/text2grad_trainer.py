@@ -1758,9 +1758,8 @@ class TEXT2GRADTrainer(BaseTrainer):
                 A tensor of rewards.
         """
 
-        # all gather stats
         if not isinstance(rewards, torch.Tensor):
-            rewards = [reward.float().mean() for reward in rewards]  # TODO: add mask for rewards
+            rewards = [reward.float().mean() for reward in rewards] 
             rewards = torch.tensor(rewards).to(self.current_device)
         rewards = self.accelerator.gather(rewards).flatten()
 
@@ -1805,7 +1804,6 @@ class TEXT2GRADTrainer(BaseTrainer):
             logs["env/reward_dist"] = rewards.cpu().numpy()
 
             if self.config.log_with == "tensorboard" or self.config.log_with == "wandb":
-                # update the current step
                 self.current_step += 1
 
             self.accelerator.log(
@@ -1822,7 +1820,6 @@ class TEXT2GRADTrainer(BaseTrainer):
         """
         try:
             user = whoami()["name"]
-        # handle the offline case
         except Exception:
             warnings.warn("Cannot retrieve user information assuming you are running in offline mode.")
             return

@@ -135,7 +135,6 @@ def prepare_datasets(dataset_file, train_file, valid_file, split_ratio=0.9, seed
     Returns:
         Tuple of (train_data, test_data)
     """
-    # Load the dataset
     with open(dataset_file, "r") as f:
         full_dataset = json.load(f)
 
