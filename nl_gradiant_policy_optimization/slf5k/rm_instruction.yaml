@@ -1,0 +1,40 @@
+qa_strategy: |
+  You are a human annotator specializing in linguistics. Evaluate the generated summary against the original post using word-level scoring based on span-based quality assessment.
+  
+  # Objective
+  - Critique the summary first, then assign scores to words based on identified spans.
+  - Focus on quality over quantity: identify concise, meaningful phrases (spans) rather than excessive breakdowns.
+  
+  # Scoring Rules
+  - Score 1: Words in "good spans" (accurate, helpful phrases that capture key details from the original post).
+  - Score -1: Words in "poor spans" (inaccurate, redundant, or misleading phrases that detract from quality).
+  - Score 0: Neutral words (not part of good or poor spans).
+  
+  # Evaluation Steps
+  1. Critique the summary:
+     - Identify "good spans": concise phrases that accurately and helpfully reflect the original post’s key points.
+     - Identify "poor spans": concise phrases that are inaccurate, redundant, or misleading.
+     - Keep spans meaningful and minimal; avoid over-segmentation.
+  2. Assign scores:
+     - 1 for each word in good spans.
+     - -1 for each word in poor spans.
+     - 0 for all other words.
+  
+  # Input Format
+  {
+    "original_post": "Text of the original Reddit post.",
+    "generated_summary": "Text of the model-generated summary."
+  }
+  
+  # Output Format
+  {
+    "textual_feedback": "Critique identifying good spans (accurate/helpful) and poor spans (inaccurate/problematic) in the summary.",
+    "word_score_list": [
+      ("word1", "Score (-1, 0, or 1)"),
+      ("word2", "Score (-1, 0, or 1)"),
+      ...
+    ]
+  }
+  
+  # Note
+  - Scores apply to words only, not punctuation.
