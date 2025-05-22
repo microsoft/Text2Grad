@@ -184,20 +184,15 @@ def main():
             for i, output in enumerate(outputs):
                 # Find input length
                 input_length = input_ids[i].size(0)
-                # Only decode newly generated tokens (assistant's response part)
                 assistant_response = tokenizer.decode(output[input_length:], skip_special_tokens=True)
 
-                # Try to parse JSON response
                 try:
-                    # Find the start and end of JSON string
                     json_start = assistant_response.find('{')
                     json_end = assistant_response.rfind('}') + 1
                     if json_start != -1 and json_end != -1:
                         json_str = assistant_response[json_start:json_end]
                         response_dict = json.loads(json_str)
 
-                        # Get original data
-                        # Fix the batch index calculation
                         original_idx = i + args.batch_size * batch_idx
                         if original_idx < len(valid_dataset.json_data):
                             original_item = valid_dataset.json_data[original_idx]
@@ -212,7 +207,6 @@ def main():
                                 "generated_feedback": response_dict.get("code_feedback", "")
                             })
                         else:
-                            # If JSON can't be found, save original response
                             results.append({
                                 "generated_response": assistant_response,
                                 "improvement_code": [],
@@ -223,7 +217,6 @@ def main():
                                 "generated_feedback": ""
                             })
                     else:
-                        # If JSON can't be found, save original response
                         results.append({
                             "generated_response": assistant_response,
                             "improvement_code": [],
@@ -245,7 +238,6 @@ def main():
                         "generated_feedback": ""
                     })
 
-    # Save results
     with open(args.output_file, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 

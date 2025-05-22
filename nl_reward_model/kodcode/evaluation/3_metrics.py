@@ -21,7 +21,6 @@ def calculate_code_similarity(generated: List[str], reference: List[str]) -> Tup
     Returns:
         Tuple of (precision, recall, F1 score)
     """
-    # Handle empty lists case
     if not reference and not generated:
         return 1.0, 1.0, 1.0
     if not reference:
@@ -29,18 +28,14 @@ def calculate_code_similarity(generated: List[str], reference: List[str]) -> Tup
     if not generated:
         return 1.0, 0.0, 0.0
 
-    # Join code segments for sequence matching
     gen_text = "\n".join(generated)
     ref_text = "\n".join(reference)
 
-    # Use SequenceMatcher to find matching blocks
     matcher = SequenceMatcher(None, gen_text, ref_text)
     matching_blocks = matcher.get_matching_blocks()
 
-    # Calculate total matched characters
     matched_chars = sum(block.size for block in matching_blocks if block.size > 0)
 
-    # Calculate metrics
     precision = matched_chars / len(gen_text) if gen_text else 1.0
     recall = matched_chars / len(ref_text) if ref_text else 1.0
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
@@ -58,7 +53,6 @@ def calculate_text_similarity(generated: str, reference: str) -> Tuple[float, fl
     Returns:
         Tuple of (precision, recall, F1 score)
     """
-    # Handle empty strings case
     if not reference and not generated:
         return 1.0, 1.0, 1.0
     if not reference:
@@ -66,14 +60,11 @@ def calculate_text_similarity(generated: str, reference: str) -> Tuple[float, fl
     if not generated:
         return 1.0, 0.0, 0.0
 
-    # Use SequenceMatcher to find matching blocks
     matcher = SequenceMatcher(None, generated, reference)
     matching_blocks = matcher.get_matching_blocks()
 
-    # Calculate total matched characters
     matched_chars = sum(block.size for block in matching_blocks if block.size > 0)
 
-    # Calculate metrics
     precision = matched_chars / len(generated) if generated else 1.0
     recall = matched_chars / len(reference) if reference else 1.0
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
@@ -95,17 +86,14 @@ def evaluate_dataset(data: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
     feedback_metrics = []
 
     for item in data:
-        # Extract generated content
         gen_wrong = item.get("generated_wrong_code", [])
         gen_improvement = item.get("generated_improvement_code", [])
         gen_feedback = item.get("generated_feedback", "")
 
-        # Extract reference data
         ref_wrong = item.get("wrong_code", [])
         ref_improvement = item.get("improvement_code", [])
         ref_feedback = item.get("feedback", "")
 
-        # Calculate metrics for wrong code
         wrong_precision, wrong_recall, wrong_f1 = calculate_code_similarity(gen_wrong, ref_wrong)
         wrong_metrics.append({
             "precision": wrong_precision,
@@ -113,7 +101,6 @@ def evaluate_dataset(data: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
             "f1": wrong_f1
         })
 
-        # Calculate metrics for improvement code
         imp_precision, imp_recall, imp_f1 = calculate_code_similarity(gen_improvement, ref_improvement)
         improvement_metrics.append({
             "precision": imp_precision,
@@ -121,7 +108,6 @@ def evaluate_dataset(data: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
             "f1": imp_f1
         })
 
-        # Calculate metrics for textual feedback
         feedback_precision, feedback_recall, feedback_f1 = calculate_text_similarity(gen_feedback, ref_feedback)
         feedback_metrics.append({
             "precision": feedback_precision,
@@ -129,7 +115,6 @@ def evaluate_dataset(data: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
             "f1": feedback_f1
         })
 
-    # Calculate average metrics
     def average_metrics(metrics_list: List[Dict[str, float]]) -> Dict[str, float]:
         """Calculate average precision, recall, and F1 scores from a list of metrics."""
         avg = {
@@ -139,13 +124,12 @@ def evaluate_dataset(data: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
         }
         return avg
 
-    # Calculate per-sample metrics
     sample_metrics = []
     for w, i, f in zip(wrong_metrics, improvement_metrics, feedback_metrics):
         sample_metrics.append({
             "precision": (w["precision"] + i["precision"] + f["precision"]) / 3,
             "recall": (w["recall"] + i["recall"] + f["recall"]) / 3,
-            "f1": (w["f1"] + i["f1"] + f["f1"]) / 3  # Fixed: now correctly averages all three F1 scores
+            "f1": (w["f1"] + i["f1"] + f["f1"]) / 3 
         })
 
     return {
@@ -171,16 +155,12 @@ def parse_args():
     return parser.parse_args()
 
 def main():
-    # Parse arguments
     args = parse_args()
     
-    # Load data
     data = load_data(args.input_file)
 
-    # Evaluate dataset
     results = evaluate_dataset(data)
 
-    # Print results
     print(f"Evaluated {results['samples']} samples")
     print("\nWord-Level Evaluation Results:")
 
@@ -204,7 +184,6 @@ def main():
     print(f"Recall: {results['overall']['recall']:.4f}")
     print(f"F1 Score: {results['overall']['f1']:.4f}")
 
-    # Save results to file
     with open(args.output_file, "w") as f:
         json.dump(results, f, indent=4)
 
