@@ -48,17 +48,14 @@ class QACDataset(Dataset):
         question = item["question"]
         response = item.get("solution", "")
 
-        # Keep this check in case 'solution' could also be a list of dicts in some cases
         if isinstance(response, list) and len(response) > 0 and isinstance(response[0], dict) and "content" in response[0]:
             response = response[0]["content"]
 
-        # Call build_dataset without the removed fields
         cur_example = self.build_dataset(question, response)
         return cur_example
 
     def build_dataset(self, question, response):
         def preprocess_function(question_text, response_text):
-            # Using the same prompt format as before
             new_prompt = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n" + \
                          question_text + "\n<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n"
 
@@ -70,7 +67,7 @@ class QACDataset(Dataset):
                 "question": question_text,
                 "input_ids": input_ids,
                 "attention_mask": attention_mask,
-                "response": response_text # This now holds the content from 'solution'
+                "response": response_text
             }
             return new_examples
 
@@ -127,7 +124,6 @@ class ScriptArguments:
 parser = HfArgumentParser(ScriptArguments)
 script_args: ScriptArguments = parser.parse_args_into_dataclasses()[0]
 
-# Convert JSON string to dictionary
 if script_args.tracker_kwargs:
     tracker_kwargs_dict = json.loads(script_args.tracker_kwargs)
 else:
@@ -311,7 +307,6 @@ if os.path.exists(ds_config_path):
     with open(ds_config_path, 'r') as f:
         ds_config = json.load(f)
         print(f"DeepSpeed config: {json.dumps(ds_config, indent=2)}")
-        # Check if optimizer is in the config
         if 'optimizer' in ds_config:
             print("WARNING: Optimizer is still defined in DeepSpeed config!")
 
@@ -347,7 +342,7 @@ reward_model = pipeline("text-generation",
                         tokenizer=reward_tokenizer
                         )
 
-# for ppo trainer
+# for text2grad trainer
 generation_kwargs = {
     "temperature": 0.6,
     "do_sample": True,
@@ -370,11 +365,9 @@ def check_and_fix_tensor(tensor, eos_id):
     if len(tensor.shape) != 1:
         raise ValueError("Input tensor must be 1D.")
 
-    # Find if there are multiple eos_id at the end
     while len(tensor) > 1 and tensor[-1] == eos_id and tensor[-2] == eos_id:
-        tensor = tensor[:-1]  # Remove extra eos_id
+        tensor = tensor[:-1] 
 
-    # If there is no eos_id at the end, add one
     if tensor[-1] != eos_id or len(tensor) == 0:
         tensor = torch.cat([tensor, torch.tensor([eos_id], dtype=tensor.dtype, device=tensor.device)])
 
@@ -444,9 +437,7 @@ def normalize_code_whitespace(text):
     """Normalizes whitespace in code snippets for better matching."""
     if not text:
         return ""
-    # Replace multiple whitespace chars (space, tab, newline) with a single space
     text = re.sub(r'\s+', ' ', text)
-    # Remove leading/trailing whitespace
     return text.strip()
 
 
@@ -457,11 +448,10 @@ def fuzzy_find(text, pattern, threshold=0.8):
     if not text or not pattern:
         return -1, -1
 
-    # Normalize the text and pattern for comparison
     norm_text_full = normalize_code_whitespace(text)
     norm_pattern = normalize_code_whitespace(pattern)
 
-    if not norm_pattern: # Don't match empty patterns
+    if not norm_pattern:
         return -1, -1
 
     exact_match_start = text.find(pattern)
@@ -533,7 +523,6 @@ def process_response_with_spans(response, wrong_code, improvement_code):
     original_wrong_code = [str(s).strip() for s in wrong_code if s and isinstance(s, str)]
     original_improvement_code = [str(s).strip() for s in improvement_code if s and isinstance(s, str)]
 
-    # Find all matching spans
     matched_spans = []
 
     for span_text in original_wrong_code:
@@ -639,7 +628,6 @@ def process_response_with_spans(response, wrong_code, improvement_code):
                     word_scores[i] = span_score
                     print(f"Directly assigned score {span_score} to word '{words[i]}'")
 
-    print(f"Word scores summary: {len([s for s in word_scores if s < 1.0])} words with negative/zero scores out of {len(word_scores)} total")
     return [(word, score) for word, score in zip(words, word_scores)]
 
 def extract_spans_from_reward_model_output(text_to_parse):
@@ -704,7 +692,6 @@ def inference_reward(reward_model, input_datas):
             results = reward_model(input_datas, **sent_kwargs)
             print("Finish inference.")
 
-            # Verify result format
             processed_results = []
 
             for result in results:
@@ -784,7 +771,6 @@ def load_json_from_string(text, log_details=False):
             if log_details:
                 print("No JSON pattern matches found with regex")
 
-        # If regex approach fails, try direct json loading
         if log_details:
             print("Attempting direct JSON loading")
         return json.loads(text)
@@ -794,7 +780,6 @@ def load_json_from_string(text, log_details=False):
             print(f"Problematic text (first 200 chars): {text[:200]}...")
             print(f"Problematic text (last 200 chars): {text[-200:] if len(text) > 200 else text}")
 
-        # Try to extract word-score pairs directly with regex as fallback
         try:
             if log_details:
                 print("Attempting word-score extraction fallback")
@@ -819,7 +804,6 @@ for epoch in range(script_args.train_epochs):
     if epoch < cur_epoch:
         continue
 
-    # Create log directory for this round
     epoch_log_dir = os.path.join(script_args.output_dir, f"logs/epoch_{epoch}")
     os.makedirs(epoch_log_dir, exist_ok=True)
 
@@ -831,7 +815,6 @@ for epoch in range(script_args.train_epochs):
             if epoch == cur_epoch and step <= cur_step:
                 continue
 
-            # Create log directory for this step
             step_log_dir = os.path.join(epoch_log_dir, f"step_{step}")
             os.makedirs(step_log_dir, exist_ok=True)
 
@@ -847,9 +830,7 @@ for epoch in range(script_args.train_epochs):
             batch["response"] = tokenizer.batch_decode(response_tensors, skip_special_tokens=True)
             batch["response"] = [text.replace("assistant", "") for text in batch["response"]]
 
-            print(batch["response"][0])  # Normal print should show the formatted text
 
-            # Use new prepare_input_data function, no longer need instruction_config
             input_datas = prepare_input_data(batch["question"], batch["response"])
             result = inference_reward(reward_model, input_datas)
             rewards = []
@@ -857,11 +838,9 @@ for epoch in range(script_args.train_epochs):
             final_question_tensors = []
             final_response_tensors = []
             new_responses = []
-            # List to store the original question strings corresponding to successful samples
             final_questions = []
             fail = 0
 
-            # Record batch level information
             batch_log = {
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "epoch": epoch,
@@ -876,7 +855,6 @@ for epoch in range(script_args.train_epochs):
                 try:
                     sample_log = {
                         "index": ind,
-                        # Use "question" instead of "query"
                         "question": batch["question"][ind][:100] + "..." if len(batch["question"][ind]) > 100 else batch["question"][ind],
                         "response": batch["response"][ind][:100] + "..." if len(batch["response"][ind]) > 100 else batch["response"][ind],
                         "status": "processing"
@@ -921,21 +899,12 @@ for epoch in range(script_args.train_epochs):
                         fail += 1
                         continue
 
-                    # --- Start: Added print statements for debugging span matching ---
-                    print(f"\n--- Debug Span Matching (Sample {ind}) ---")
-                    print(f"Response to check:\n{batch['response'][ind]}")
-                    print(f"Wrong code spans:\n{parsed_result.get('wrong_code', 'N/A')}") # Use .get for safety
-                    print(f"Improvement code spans:\n{parsed_result.get('improvement_code', 'N/A')}") # Use .get for safety
-                    print("--- End Debug ---\n")
-                    # --- End: Added print statements ---
-                    # Use process_response_with_spans function to process response and code snippets
                     score_list = process_response_with_spans(
                         batch['response'][ind],
                         parsed_result['wrong_code'],
                         parsed_result['improvement_code']
                     )
 
-                    # Extract rewards and words from score_list
                     if score_list:
                         word_rewards = [score for _, score in score_list]
                         word_list = [word for word, _ in score_list]
@@ -945,7 +914,6 @@ for epoch in range(script_args.train_epochs):
                         final_question_tensors.append(question_tensors[ind])
                         final_response_tensors.append(response_tensors[ind])
                         new_responses.append(batch['response'][ind])
-                        # Append the corresponding question string
                         final_questions.append(batch['question'][ind])
                         print(f"Successfully processed output {ind}")
 
@@ -979,28 +947,21 @@ for epoch in range(script_args.train_epochs):
                     batch_log["failed_samples"] += 1
                     continue
 
-            print(f"A total of {fail} failures in the current step!!! Successfully processed {len(rewards)} samples")
 
-            # Check the number of valid samples
             valid_samples = len(final_question_tensors)
 
-            # In a multi-GPU environment, ensure all processes have enough valid samples
             if ppo_trainer.accelerator.num_processes > 1:
-                # Get current process's valid samples
                 valid_samples_tensor = torch.tensor(valid_samples, device=ppo_trainer.accelerator.device)
 
-                # Collect all processes' valid samples
                 all_valid_samples = [torch.zeros_like(valid_samples_tensor) for _ in range(ppo_trainer.accelerator.num_processes)]
                 torch.distributed.all_gather(all_valid_samples, valid_samples_tensor)
 
-                # Check if any process has fewer than threshold valid samples
                 min_valid_samples = min([count.item() for count in all_valid_samples])
 
-                if min_valid_samples < 8:  # Set minimum sample threshold to 8
+                if min_valid_samples < 8:
                     print(f"Warning: Some processes have fewer than 8 valid samples (min: {min_valid_samples}), skipping step")
                     continue
 
-            # Check for single GPU case
             elif valid_samples < 8:
                 print(f"Warning: Too few valid samples ({valid_samples}), skipping step")
                 continue
@@ -1014,13 +975,10 @@ for epoch in range(script_args.train_epochs):
                 wandb.log({"train/loss_value_kl": loss_vs}, step=wandb_step)
                 wandb.log({"train/average_advantages": average_rewards.item()}, step=wandb_step)
 
-                # Log detailed reward information for each batch
                 if rewards:
-                    # Calculate reward statistics
                     all_rewards = [r.tolist() for r in rewards]
                     flat_rewards = [item for sublist in all_rewards for item in sublist]
 
-                    # Log reward distribution
                     wandb.log({
                         "rewards/mean": sum(flat_rewards) / len(flat_rewards) if flat_rewards else 0,
                         "rewards/max": max(flat_rewards) if flat_rewards else 0,
@@ -1031,32 +989,26 @@ for epoch in range(script_args.train_epochs):
                         "rewards/sample_count": len(flat_rewards)
                     }, step=wandb_step)
 
-                    # Log histogram of rewards
                     wandb.log({"rewards/distribution": wandb.Histogram(flat_rewards)}, step=wandb_step)
 
-                # Create a log_batch dictionary with the filtered data for log_stats
                 log_batch = {"question": final_questions, "response": new_responses}
                 ppo_trainer.log_stats(wandb_step, stats, log_batch, rewards)
 
                 if step != 0 and step % script_args.save_freq == 0:
                     try:
-                        # Only save on the main process to avoid conflicts
                         if ppo_trainer.accelerator.is_main_process:
                             save_path = os.path.join(script_args.output_dir, f"epoch_{epoch}_step_{step}")
                             os.makedirs(save_path, exist_ok=True)
 
-                            # Save the model with proper error handling
                             print(f"Saving model to {save_path}...")
                             ppo_trainer.save_pretrained(save_path)
 
-                            # Save optimizer state with proper error handling
                             optimizer_path = os.path.join(save_path, "optimizer.pt")
                             torch.save({
                                 'optimizer': optimizer.state_dict(),
                                 'lr_scheduler': lr_scheduler.state_dict() if lr_scheduler else None,
                             }, optimizer_path)
 
-                            # Verify the saved files exist
                             expected_files = ["adapter_model.safetensors", "pytorch_model.bin", "optimizer.pt"]
                             missing_files = [f for f in expected_files if not os.path.exists(os.path.join(save_path, f))]
 
