@@ -33,9 +33,6 @@ import safetensors
 JSONDict = Annotated[Optional[dict], tyro.conf.arg(metavar="JSON", constructor=json.loads)]
 
 tqdm.pandas()
-os.environ["WANDB_API_KEY"] = "YOUR_WANDB_API_KEY"
-os.environ["WANDB_MODE"] = "online"
-
 
 class QACDataset(Dataset):
     def __init__(self, json_path, tokenizer, prompt_max_length, max_length):
@@ -139,7 +136,6 @@ class ScriptArguments:
 parser = HfArgumentParser(ScriptArguments)
 script_args: ScriptArguments = parser.parse_args_into_dataclasses()[0]
 
-# 将 JSON 字符串转换成字典
 if script_args.tracker_kwargs:
     tracker_kwargs_dict = json.loads(script_args.tracker_kwargs)
 else:
@@ -171,7 +167,6 @@ config = PPOConfig(
     kl_penalty=script_args.kl_penalty
 )
 
-# prompt format
 with open("./rm_instruction.yaml", 'r') as file:
     instrcution_config = yaml.safe_load(file)
 
@@ -190,7 +185,7 @@ reward_tokenizer = AutoTokenizer.from_pretrained(
     model_max_length=1700,
     use_fast=True,
     padding_side='right'
-)  # 1024+521 =
+)
 
 if not tokenizer.pad_token:
     tokenizer.pad_token = tokenizer.eos_token
@@ -205,13 +200,10 @@ def collator(data):
     return dict((key, [d[key] for d in data]) for key in data[0])
 
 
-# We retrieve the dataloader by calling the `build_dataset` function.
 ds = QACDataset(script_args.data_file_path, tokenizer, script_args.prompt_max_length, script_args.answer_max_length)
 
-# set seed before initializing value head for deterministic eval
 set_seed(config.seed)
 
-# Now let's build the model, the reference model, and the tokenizer.
 current_device = Accelerator().local_process_index
 
 lora_config = LoraConfig(
@@ -231,28 +223,23 @@ if script_args.base_model_adapter_model:
     adapter_path = script_args.base_model_adapter_model
     print(f"Loading adapter model from {adapter_path}")
     try:
-        # Load adapter weights
         adapter_file = os.path.join(adapter_path, "adapter_model.safetensors")
         if os.path.exists(adapter_file):
             adapter_model_state = safetensors.torch.load_file(adapter_file)
             
-            # Load value head weights
             v_head_file = os.path.join(adapter_path, "pytorch_model.bin")
             if os.path.exists(v_head_file):
                 v_head = torch.load(v_head_file, map_location="cuda:0" if torch.cuda.is_available() else "cpu")
                 
-                # Process adapter weight keys to match expected format
                 new_adapter_model_state = {
                     "pretrained_model." + k[:-7] + ".default" + k[-7:]: v
                     for k, v in adapter_model_state.items()
                 }
                 
-                # Merge model state dictionaries
                 model_dict = model.state_dict()
                 new_adapter_model_state.update(v_head)
                 model_dict.update(new_adapter_model_state)
                 
-                # Load the merged state dictionary
                 model.load_state_dict(model_dict, strict=False)
                 print("Successfully loaded adapter model and value head")
             else:
@@ -481,7 +468,6 @@ def check_and_fix_tensor(tensor, eos_id):
     while len(tensor) > 1 and tensor[-1] == eos_id and tensor[-2] == eos_id:
         tensor = tensor[:-1]  # Remove extra EOS tokens
 
-    # If there's no EOS token at the end, add one
     if tensor[-1] != eos_id or len(tensor) == 0:
         tensor = torch.cat([tensor, torch.tensor([eos_id], dtype=tensor.dtype, device=tensor.device)])
 
@@ -587,11 +573,9 @@ if script_args.base_model_adapter_model:
     # Update wandb_step for tracking
     wandb_step = cur_epoch * num_batches_per_epoch + cur_step
 
-    # Calculate number of samples to skip for resuming training
     total_samples_to_skip = cur_epoch * (
             num_batches_per_epoch * script_args.batch_size) + cur_step * script_args.batch_size
 
-    # Set random seed to ensure consistent data ordering
     set_seed(script_args.seed)
 
     # Create DataLoader with proper generator for reproducibility
@@ -607,7 +591,6 @@ if script_args.base_model_adapter_model:
         drop_last=True,
     )
 
-    # Skip previously processed samples
     for _ in range(total_samples_to_skip // script_args.batch_size):
         next(iter(ppo_trainer.dataloader))
 

@@ -4,6 +4,7 @@ import typing
 import warnings
 from contextlib import nullcontext
 from typing import Callable, List, Optional, Union
+from rich.text import Text
 
 import datasets
 import torch
@@ -1601,9 +1602,6 @@ class TEXT2GRADTrainer(BaseTrainer):
         self.create_model_card(save_directory)
 
     def _show_tokens(self, tokens, masks):
-        from rich import print
-        from rich.text import Text
-
         text = Text()
 
         for _i, (token, mask) in enumerate(zip(tokens, masks)):
