@@ -124,24 +124,18 @@ def extract_word_scores(response):
         response_dict = json.loads(response)
         word_score_list = response_dict.get("word_score_list", [])
 
-        # Handle different formats
         if isinstance(word_score_list, str):
-            # Parse string representation of tuples
             tuples = re.findall(r'\([\"\']?([^\"\',]+)[\"\']?,\s*(-?\d+)\)', word_score_list)
             return [(word, int(score)) for word, score in tuples]
         elif isinstance(word_score_list, list):
-            # Handle list of dictionaries
             if word_score_list and isinstance(word_score_list[0], dict):
-                # Try different key combinations
                 if "word" in word_score_list[0] and "score" in word_score_list[0]:
                     return [(item["word"], int(item["score"])) for item in word_score_list]
                 elif "word" in word_score_list[0] and "Score" in word_score_list[0]:
                     return [(item["word"], int(item["Score"])) for item in word_score_list]
-            # Handle list of lists/tuples
             elif word_score_list and isinstance(word_score_list[0], (list, tuple)):
                 return [(str(item[0]), int(item[1])) for item in word_score_list]
 
-        # If we get here, try a more general approach
         print(f"Warning: Using fallback extraction for format: {type(word_score_list)}")
         if isinstance(word_score_list, list):
             result = []
@@ -426,7 +420,6 @@ def main():
                 print(f"Warning: Could not find ground truth for result at index {data_index}")
                 continue
                 
-            # Extract ground truth feedback and word scores
             standard_feedback = original_data.get("textual_feedback", "")
             standard_word_scores = extract_standard_word_scores(original_data)
             
