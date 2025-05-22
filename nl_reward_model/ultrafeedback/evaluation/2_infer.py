@@ -63,7 +63,6 @@ def format_prompt(user_prompt, assistant_response):
 def parse_response(assistant_part):
     """Parse the model's response to extract good and poor spans"""
     try:
-        # First try to find and parse JSON directly
         json_start = assistant_part.find("{")
         json_end = assistant_part.rfind("}") + 1
 
@@ -72,10 +71,8 @@ def parse_response(assistant_part):
             try:
                 return json.loads(json_str)
             except json.JSONDecodeError:
-                # If JSON parsing fails, use regex to extract spans
                 return extract_spans_with_regex(assistant_part)
         else:
-            # If no JSON-like structure found, try regex directly
             return extract_spans_with_regex(assistant_part)
 
     except Exception as e:
@@ -83,13 +80,11 @@ def parse_response(assistant_part):
 
 def extract_spans_with_regex(text):
     """Extract spans using regex when JSON parsing fails"""
-    # Extract good spans using regex
     good_spans_pattern = r'"good_spans"\s*:\s*\[(.*?)\]'
     good_spans_match = re.search(good_spans_pattern, text, re.DOTALL)
     good_spans = []
     if good_spans_match:
         good_spans_text = good_spans_match.group(1)
-        # Extract individual spans (handling both single and double quotes)
         span_pattern = r'(?:"([^"]*?)"|\'([^\']*?)\')'
         good_spans = [m[0] or m[1] for m in re.findall(span_pattern, good_spans_text)]
 
@@ -99,7 +94,6 @@ def extract_spans_with_regex(text):
     poor_spans = []
     if poor_spans_match:
         poor_spans_text = poor_spans_match.group(1)
-        # Extract individual spans (handling both single and double quotes)
         span_pattern = r'(?:"([^"]*?)"|\'([^\']*?)\')'
         poor_spans = [m[0] or m[1] for m in re.findall(span_pattern, poor_spans_text)]
 
@@ -111,10 +105,8 @@ def extract_spans_with_regex(text):
 def main():
     args = parse_args()
     
-    # Set GPU
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_ids
 
-    # Load model with VLLM
     print(f"Loading model from {args.model_path} with VLLM")
     model = LLM(
         model=args.model_path,
@@ -124,14 +116,12 @@ def main():
         max_model_len=8192,    
     )
 
-    # Define sampling parameters
     sampling_params = SamplingParams(
         temperature=0.7,
         top_p=0.9,
         max_tokens=args.max_new_tokens,
     )
 
-    # Load validation data
     print(f"Loading validation data from {args.valid_dataset_file}")
     with open(args.valid_dataset_file, "r") as f:
         valid_data = json.load(f)
@@ -141,37 +131,29 @@ def main():
 
     results = []
 
-    # Process validation data in batches
     for i in tqdm(range(0, len(valid_data), args.batch_size), desc="Processing batches"):
         batch_items = valid_data[i:i+args.batch_size]
         batch_prompts = []
         prompt_ids = []
 
-        # Format prompts for the batch
         for idx, item in enumerate(batch_items):
             user_prompt = item["prompt"]
             assistant_response = item["response"]
             
-            # Format the prompt
             input_text = format_prompt(user_prompt, assistant_response)
             batch_prompts.append(input_text)
             prompt_ids.append(i + idx)
 
-        # Generate responses for the batch using VLLM
         outputs = model.generate(batch_prompts, sampling_params)
 
-        # Process each response in the batch
         for output, prompt_id in zip(outputs, prompt_ids):
             item = valid_data[prompt_id]
             generated_text = output.outputs[0].text
 
-            # Extract the model's response
             assistant_part = generated_text.strip()
 
-            # Parse the response
             parsed_response = parse_response(assistant_part)
 
-            # Store results
             result = {
                 "prompt": item["prompt"],
                 "response": item["response"],
@@ -185,13 +167,11 @@ def main():
 
             results.append(result)
 
-            # Print only the first result from each batch to avoid excessive output
             if prompt_id == i:
                 print(f"Sample output from batch {i//args.batch_size + 1}:")
                 print(generated_text[:200] + "..." if len(generated_text) > 200 else generated_text)
                 print("-" * 50)
 
-    # Save results
     print(f"Saving results to {args.output_file}")
     with open(args.output_file, "w") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
