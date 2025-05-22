@@ -175,10 +175,8 @@ class TEXT2GRADTrainer(BaseTrainer):
         """
         super().__init__(config)
 
-        # Initial setup
         set_seed(config.seed)
         
-        # Validate inputs
         if not isinstance(config, PPOConfig):
             raise ValueError(f"config must be a PPOConfig, got {type(config)}")
         if not isinstance(tokenizer, (PreTrainedTokenizerBase)):
@@ -186,7 +184,6 @@ class TEXT2GRADTrainer(BaseTrainer):
         if not isinstance(model, (SUPPORTED_ARCHITECTURES)):
             raise ValueError(f"model must be a PreTrainedModelWrapper, got {type(model)}")
 
-        # Initialize accelerator
         self.accelerator = Accelerator(
             log_with=config.log_with,
             gradient_accumulation_steps=config.gradient_accumulation_steps,
@@ -194,12 +191,10 @@ class TEXT2GRADTrainer(BaseTrainer):
             **config.accelerator_kwargs,
         )
 
-        # Update config with runtime variables
         config.world_size = self.accelerator.num_processes
         config.global_backward_batch_size = config.backward_batch_size * config.world_size
         config.global_batch_size = config.batch_size * config.world_size
 
-        # Model setup
         self.model = model
         self.model_params = filter(lambda p: p.requires_grad, self.model.parameters())
         self.is_encoder_decoder = hasattr(self.model, "is_encoder_decoder")
@@ -208,7 +203,6 @@ class TEXT2GRADTrainer(BaseTrainer):
         config.is_encoder_decoder = self.is_encoder_decoder
         config.is_peft_model = self.is_peft_model
 
-        # Initialize trackers
         is_using_tensorboard = config.log_with is not None and config.log_with == "tensorboard"
         self.accelerator.init_trackers(
             config.tracker_project_name,
@@ -217,7 +211,6 @@ class TEXT2GRADTrainer(BaseTrainer):
         )
         self.is_using_text_environment = getattr(config, "use_text_environment", False)
 
-        # Reference model setup
         if isinstance(ref_model, SUPPORTED_ARCHITECTURES):
             self.ref_model = ref_model
             if num_shared_layers is not None:
@@ -238,14 +231,12 @@ class TEXT2GRADTrainer(BaseTrainer):
             else nullcontext
         )
 
-        # Tokenizer setup
         if not (isinstance(tokenizer, PreTrainedTokenizer) or isinstance(tokenizer, PreTrainedTokenizerFast)):
             raise ValueError(
                 "tokenizer must be a transformers.PreTrainedTokenizer or transformers.PreTrainedTokenizerFast"
             )
         self.tokenizer = tokenizer
 
-        # Dataset setup
         if dataset is not None and not (isinstance(dataset, torch.utils.data.Dataset) or isinstance(dataset, Dataset)):
             raise ValueError("dataset must be a torch.utils.data.Dataset or datasets.Dataset")
         elif dataset is None:
@@ -269,19 +260,15 @@ class TEXT2GRADTrainer(BaseTrainer):
         else:
             self.dataloader = None
 
-        # Optimizer setup
         self.data_collator = DataCollatorForLanguageModeling(self.tokenizer, mlm=False)
         if optimizer is None:
-            # Replace your optimizer with DummyOptim
             if not isinstance(optimizer, DummyOptim):
-                # Save the original optimizer parameters
                 lr = optimizer.param_groups[0]['lr']
                 weight_decay = optimizer.param_groups[0].get('weight_decay', 0.0)
                 beta1 = optimizer.param_groups[0].get('betas', (0.9, 0.999))[0]
                 beta2 = optimizer.param_groups[0].get('betas', (0.9, 0.999))[1]
                 epsilon = optimizer.param_groups[0].get('eps', 1e-8)
 
-                # Create a DummyOptim with the same parameters
                 self.optimizer = DummyOptim(
                     params=model.parameters(),
                     lr=lr,
@@ -317,12 +304,10 @@ class TEXT2GRADTrainer(BaseTrainer):
         else:
             self.kl_ctl = FixedKLController(self.config.init_kl_coef)
 
-        # Safety checkers for DS integration
         is_deepspeed_used = self.accelerator.distributed_type == "DEEPSPEED" and hasattr(
             self.accelerator.state, "deepspeed_plugin"
         )
 
-        # Create DummyOptim for DeepSpeed compatibility
         print(f"Creating DummyOptim for DeepSpeed compatibility (distributed: {self.accelerator.num_processes > 1})")
         if optimizer is not None:
             try:
@@ -355,7 +340,6 @@ class TEXT2GRADTrainer(BaseTrainer):
                 weight_decay=0.0
             )
 
-        # Create DummyScheduler if needed
         if lr_scheduler is not None:
             try:
                 print("Creating DummyScheduler")
@@ -370,41 +354,36 @@ class TEXT2GRADTrainer(BaseTrainer):
         else:
             self.lr_scheduler = None
 
-        # Initialize current_step attribute for logging
         self.current_step = 0
 
-        # Prepare with accelerator
         print("Preparing with accelerator")
         if self.lr_scheduler is not None:
             (
                 self.model,
                 self.optimizer,
                 self.lr_scheduler,
-                self.dataloader,  # Changed from self.train_dataloader to self.dataloader
+                self.dataloader,  
             ) = self.accelerator.prepare(
                 self.model,
                 self.optimizer,
                 self.lr_scheduler,
-                self.dataloader,  # Changed from self.train_dataloader to self.dataloader
+                self.dataloader, 
             )
         else:
             (
                 self.model,
                 self.optimizer,
-                self.dataloader,  # Changed from self.train_dataloader to self.dataloader
+                self.dataloader, 
             ) = self.accelerator.prepare(
                 self.model,
                 self.optimizer,
-                self.dataloader,  # Changed from self.train_dataloader to self.dataloader
+                self.dataloader, 
             )
 
-        # Add current_device attribute
         self.current_device = self.accelerator.device
 
-        # Add is_distributed attribute
         self.is_distributed = self.accelerator.num_processes > 1
 
-        # Add is_deepspeed attribute
         self.is_deepspeed = is_deepspeed_used
 
     def _filter_kwargs(self, kwargs, target_func):
@@ -444,14 +423,12 @@ class TEXT2GRADTrainer(BaseTrainer):
         )
         return dataloader
 
-    # Adapted from transformers.Trainer._set_signature_columns_if_needed
     def _set_signature_columns_if_needed(self):
         if self._signature_columns is None:
             signature = inspect.signature(self.model.forward)
             self._signature_columns = list(signature.parameters.keys())
             self._signature_columns += ["label", "query", "response"]
 
-    # Adapted from transformers.Trainer._remove_unused_columns
     def _remove_unused_columns(self, dataset: "Dataset"):
         if not self.config.remove_unused_columns:
             return dataset
@@ -566,9 +543,8 @@ class TEXT2GRADTrainer(BaseTrainer):
         outputs = []
         padding_side_default = self.tokenizer.padding_side
         if not self.is_encoder_decoder:
-            self.tokenizer.padding_side = "right"  # 原来这里对自回归编码器使用的是做填充，现适应llama架构，改为右填充
+            self.tokenizer.padding_side = "right"
 
-        # in case we have fewer examples than bs
         batch_size = min(len(query_tensors), batch_size)
 
         def clean_special_tokens(output_tensor):
@@ -581,27 +557,21 @@ class TEXT2GRADTrainer(BaseTrainer):
                 'human': ''
             }
 
-            # Convert tensor to list of token ids
             output_ids = output_tensor.tolist()
 
-            # Decode to text
             text = self.tokenizer.decode(output_ids)
 
-            # Remove special tokens
             for token, replacement in special_tokens.items():
                 text = text.replace(token, replacement)
 
-            # Clean up extra whitespace
             text = ' '.join(text.split())
 
-            # Re-encode cleaned text
             return self.tokenizer.encode(text, return_tensors='pt')[0]
 
         for i in range(0, len(query_tensors), batch_size):
             if length_sampler is not None:
                 generation_kwargs["max_new_tokens"] = length_sampler()
 
-            # prevent overflow if query tensors are not even multiple of bs
             end_index = min(len(query_tensors), i + batch_size)
 
             batch = query_tensors[i:end_index]
@@ -624,7 +594,6 @@ class TEXT2GRADTrainer(BaseTrainer):
                     output = generation[len(mask):]
 
                 if remove_padding:
-                    # Clean and handle special tokens
                     output = clean_special_tokens(output)
 
                     if self.tokenizer.eos_token_id in output:
@@ -636,8 +605,6 @@ class TEXT2GRADTrainer(BaseTrainer):
 
                             if len(output) > 0:
                                 clean_text = self.tokenizer.decode(output)
-                                if clean_text.strip():  # Only print if there's actual content
-                                    print(f"Cleaned text: {clean_text}")
 
                 outputs.append(output)
 
@@ -730,7 +697,6 @@ class TEXT2GRADTrainer(BaseTrainer):
                     torch.cuda.empty_cache()
 
             if self.config.score_clip is not None:
-                # Score clipping
                 scores_dtype = scores.dtype
                 scores = torch.clip(scores.float(), -self.config.score_clip, self.config.score_clip).to(dtype=scores_dtype)
                 del scores_dtype
@@ -740,10 +706,8 @@ class TEXT2GRADTrainer(BaseTrainer):
             if hasattr(self, "highest_reward"):
                 if self.compare_step % self.config.compare_steps == 0:
                     curr_mean_reward = scores.mean()
-                    # if the best reward ever seen
                     if curr_mean_reward > self.highest_reward:
                         self.highest_reward = curr_mean_reward
-                        # push model to hub
                         self.push_to_hub(**self.push_to_hub_kwargs)
                     del curr_mean_reward
                 self.compare_step += 1
@@ -1115,7 +1079,7 @@ class TEXT2GRADTrainer(BaseTrainer):
             input_data["decoder_input_ids"] = decoder_inputs["input_ids"]
             input_data["decoder_attention_mask"] = decoder_inputs["attention_mask"]
         else:
-            input_ids = [torch.cat([q, r]) for q, r in zip(queries, responses)]  # 将question与answer部分拼接在一起
+            input_ids = [torch.cat([q, r]) for q, r in zip(queries, responses)]  
             input_data = self.data_collator(
                 [{"input_ids": ids, "attention_mask": torch.ones_like(ids)} for ids in input_ids]
             ).to(self.current_device)
@@ -1189,7 +1153,7 @@ class TEXT2GRADTrainer(BaseTrainer):
                 input_ids = input_kwargs["input_ids"]
                 attention_mask = input_kwargs["attention_mask"]
 
-            logprobs = logprobs_from_logits(logits[:, :-1, :], input_ids[:, 1:])  # 计算每个tokens的对数概率
+            logprobs = logprobs_from_logits(logits[:, :-1, :], input_ids[:, 1:])
             masks = torch.zeros_like(attention_mask)
             masks[:, :-1] = attention_mask[:, 1:]
 
@@ -1372,7 +1336,7 @@ class TEXT2GRADTrainer(BaseTrainer):
                 for i in range(1, min(10, len(token_list) - token_index)):
                     actual_tokens = token_list[token_index:token_index + i]
                     concatenated_tokens = ''.join(actual_tokens)
-                    current_word = word_list[word_index].replace("'","'").replace("'","'")  # Fixed the invalid comma character
+                    current_word = word_list[word_index].replace("'","'").replace("'","'")
 
                     if len(concatenated_tokens) > len(current_word) + 2:
                         continue
@@ -1426,7 +1390,6 @@ class TEXT2GRADTrainer(BaseTrainer):
         for i in range(len(words)):
             words[i] = [word.lower() for word in words[i]]
 
-        # process all_tokens
         for i in range(len(all_tokens)):
             all_tokens[i] = [token.lower() for token in all_tokens[i]]
 
@@ -1475,7 +1438,7 @@ class TEXT2GRADTrainer(BaseTrainer):
                 token_non_score = [torch.tensor(0., device=score_list[0].device)] * answer_indices_tokens[i]
                 token_score, total_skip_words_num = self.assign_token_rewards(token_list, word_list, score_list)
 
-            total_skip_words_nums.append(float(total_skip_words_num / max(1, len(word_list))))  # Avoid division by zero
+            total_skip_words_nums.append(float(total_skip_words_num / max(1, len(word_list))))
 
             token_scores.append(token_non_score + token_score)
 
@@ -1513,20 +1476,16 @@ class TEXT2GRADTrainer(BaseTrainer):
 
         for score, logprob, ref_logprob, mask in zip(scores, logprobs, ref_logprobs, masks):
             assert len(logprob) == len(score)
-            # compute KL penalty (from difference in logprobs)
-            kl = self._kl_penalty(logprob, ref_logprob)  # kl=0
+            kl = self._kl_penalty(logprob, ref_logprob)  
             kls.append(kl)
-            non_score_reward = -self.kl_ctl.value * kl  # 0.2*0=0
+            non_score_reward = -self.kl_ctl.value * kl 
             non_score_rewards.append(non_score_reward)
             reward = non_score_reward.clone()
-            # last_non_masked_index = mask.nonzero()[-1]
             non_masked_indices = mask.nonzero()
 
             for index in non_masked_indices:
                 reward[index] += score[index]
 
-            # reward is preference model score + KL penalty
-            # reward[last_non_masked_index] += score
             rewards.append(reward)
         return torch.stack(rewards), torch.stack(non_score_rewards), torch.stack(kls)
  
@@ -1541,7 +1500,6 @@ class TEXT2GRADTrainer(BaseTrainer):
             return 0.5 * (logprob - ref_logprob).square()
 
         if self.config.kl_penalty == "full":
-            # Flip is required due to this issue? :https://github.com/pytorch/pytorch/issues/57459
             return F.kl_div(ref_logprob, logprob, log_target=True, reduction="none").sum(-1)
 
         raise NotImplementedError
@@ -1553,38 +1511,35 @@ class TEXT2GRADTrainer(BaseTrainer):
             mask: torch.FloatTensor,
     ):
         """
-        计算优势函数和回报
+        Compute advantages and returns.
 
         Args:
-            values: 值函数预测
-            rewards: 奖励
-            mask: 掩码
+            values: Value function predictions
+            rewards: Rewards
+            mask: Mask tensor
 
         Returns:
-            values: 值函数预测
-            advantages: 优势函数
-            returns: 回报
+            values: Value function predictions
+            advantages: Advantage function
+            returns: Returns
         """
         lastgaelam = 0
         advantages_reversed = []
         gen_len = rewards.shape[-1]
 
-        # 应用掩码
         values = values * mask
         rewards = rewards * mask
 
-        # 按照原始代码，先计算优势，再进行whitening
         for t in reversed(range(gen_len)):
             nextvalues = values[:, t + 1] if t < gen_len - 1 else 0.0
             delta = rewards[:, t] + self.config.gamma * nextvalues - values[:, t]
             lastgaelam = delta + self.config.gamma * self.config.lam * lastgaelam
-            lastgaelam = lastgaelam * mask[:, t]  # 应用掩码
+            lastgaelam = lastgaelam * mask[:, t]  
             advantages_reversed.append(lastgaelam)
 
         advantages = torch.stack(advantages_reversed[::-1]).transpose(0, 1)
         returns = advantages + values
 
-        # 记录原始优势值的统计信息
         valid_advantages = advantages[mask.bool()]
 
         advantages = masked_whiten(advantages, mask)
@@ -1640,7 +1595,7 @@ class TEXT2GRADTrainer(BaseTrainer):
         logprob_diff = torch.clamp(logprob_diff, -20, 20)  
         ratio = torch.exp(logprob_diff)
 
-        pg_losses = -advantages * ratio  # advantage越大，pg loss越小
+        pg_losses = -advantages * ratio 
         pg_losses2 = -advantages * torch.clamp(ratio, 1.0 - self.config.cliprange, 1.0 + self.config.cliprange)
 
         pg_loss = masked_mean(torch.max(pg_losses, pg_losses2), mask)
@@ -1708,7 +1663,7 @@ class TEXT2GRADTrainer(BaseTrainer):
         for i, scores in enumerate(data["scores"]):
             mask_i = mask[i]
             mask_score = [score for j, score in enumerate(scores) if j < len(mask_i) and mask_i[j] == 1]
-            mask_score = torch.tensor(mask_score, dtype=torch.float32)  # Convert to float32
+            mask_score = torch.tensor(mask_score, dtype=torch.float32)  
 
             masked_scores.append(mask_score)
 
@@ -1777,13 +1732,10 @@ class TEXT2GRADTrainer(BaseTrainer):
                     gathered_batch_list.append(flattened)
                 batch_list = gathered_batch_list
 
-        # Log only if we are in the main process
         if self.accelerator.is_main_process:
             logs = {}
 
-            # Log stats
             if "query" not in batch.keys() and "response" not in batch.keys():
-                # warn the user that the game logs will not be logged
                 warnings.warn(
                     "The game logs will not be logged because the batch does not contain the keys 'query' and "
                     "'response'. "
@@ -1794,7 +1746,6 @@ class TEXT2GRADTrainer(BaseTrainer):
 
             logs.update(stats)
 
-            # manually cast in fp32 for bf16 torch tensors
             for k, v in logs.items():
                 if isinstance(v, torch.Tensor) and v.dtype == torch.bfloat16:
                     logs[k] = v.float()
