@@ -59,7 +59,6 @@ def parse_args():
 
 
 def load_and_prepare_model(model_path):
-    # 加载tokenizer和模型
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True, padding_side="right")
     if not tokenizer.pad_token:
         tokenizer.pad_token = tokenizer.eos_token
@@ -93,11 +92,9 @@ Please score each word in generated_summary based on original_post and the feedb
 
 
 def process_batch(model, tokenizer, batch_data, max_new_tokens, temperature):
-    # 准备批次的输入
     prompts = [prepare_input(data["post"], data["generated_summary"]) for data in batch_data]
     inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True).to(model.device)
 
-    # 生成输出
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
@@ -107,17 +104,13 @@ def process_batch(model, tokenizer, batch_data, max_new_tokens, temperature):
             pad_token_id=tokenizer.pad_token_id
         )
 
-    # 解码输出，直接跳过特殊标记
     responses = []
     for i, output in enumerate(outputs):
-        # 获取输入的长度
         input_length = inputs['input_ids'].shape[1]
 
-        # 只解码生成的新token部分
         response_tokens = output[input_length:]
         response = tokenizer.decode(response_tokens, skip_special_tokens=True).strip()
 
-        print(f'成功提取response {i + 1}！')
         print(response)
 
         responses.append(response)
@@ -127,11 +120,9 @@ def process_batch(model, tokenizer, batch_data, max_new_tokens, temperature):
 
 def extract_textual_feedback(response):
     try:
-        # 尝试解析JSON响应
         response_dict = json.loads(response)
         return response_dict.get("textual_feedback", "")
     except json.JSONDecodeError:
-        # 如果JSON解析失败，尝试使用正则表达式提取
         match = re.search(r'"textual_feedback"\s*:\s*"([^"]*)"', response)
         if match:
             return match.group(1)
@@ -140,46 +131,37 @@ def extract_textual_feedback(response):
 
 def extract_word_scores(response):
     try:
-        # Try parsing JSON response
         response_dict = json.loads(response)
         word_score_list = response_dict.get("word_score_list", [])
 
-        # Handle different formats
         if isinstance(word_score_list, str):
             # Parse string representation of tuples
             tuples = re.findall(r'\([\"\']?([^\"\',]+)[\"\']?,\s*(-?\d+)\)', word_score_list)
             return [(word, int(score)) for word, score in tuples]
         elif isinstance(word_score_list, list):
-            # Handle list of dictionaries
             if word_score_list and isinstance(word_score_list[0], dict):
-                # Try different key combinations
                 if "word" in word_score_list[0] and "score" in word_score_list[0]:
                     return [(item["word"], int(item["score"])) for item in word_score_list]
                 elif "word" in word_score_list[0] and "Score" in word_score_list[0]:
                     return [(item["word"], int(item["Score"])) for item in word_score_list]
-            # Handle list of lists/tuples
             elif word_score_list and isinstance(word_score_list[0], (list, tuple)):
                 return [(str(item[0]), int(item[1])) for item in word_score_list]
 
-        # If we get here, try a more general approach
         print(f"Warning: Using fallback extraction for format: {type(word_score_list)}")
         if isinstance(word_score_list, list):
             result = []
             for item in word_score_list:
                 if isinstance(item, (list, tuple)) and len(item) >= 2:
                     word = str(item[0])
-                    # Handle cases where the score might be a string like "-1" or "1"
                     score = item[1]
                     if isinstance(score, str):
                         try:
                             score = int(score)
                         except ValueError:
-                            # If conversion fails, try to extract just the number
                             score_match = re.search(r'(-?\d+)', score)
                             score = int(score_match.group(1)) if score_match else 0
                     result.append((word, score))
                 elif isinstance(item, dict) and len(item) >= 2:
-                    # Try to find word and score keys
                     word_key = next((k for k in item.keys() if k.lower() in ['word', 'token']), None)
                     score_key = next((k for k in item.keys() if k.lower() in ['score', 'value']), None)
                     if word_key and score_key:
@@ -196,10 +178,9 @@ def extract_word_scores(response):
 
         return []
     except json.JSONDecodeError:
-        # If JSON parsing fails, try using regex to extract word scores
         patterns = [
-            r'\([\"\']?([^\"\',]+)[\"\']?,\s*(-?\d+)\)',  # ("word", 1) or ('word', 1)
-            r'\[[\"\']?([^\"\',]+)[\"\']?,\s*(-?\d+)\]',  # ["word", 1] or ['word', 1]
+            r'\([\"\']?([^\"\',]+)[\"\']?,\s*(-?\d+)\)',
+            r'\[[\"\']?([^\"\',]+)[\"\']?,\s*(-?\d+)\]', 
             r'{\s*[\"\']?word[\"\']?\s*:\s*[\"\']?([^\"\',]+)[\"\']?\s*,\s*[\"\']?score[\"\']?\s*:\s*(-?\d+)\s*}'  # {"word": "word", "score": 1}
         ]
 
