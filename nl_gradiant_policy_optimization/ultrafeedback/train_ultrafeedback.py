@@ -132,7 +132,6 @@ class ScriptArguments:
 parser = HfArgumentParser(ScriptArguments)
 script_args: ScriptArguments = parser.parse_args_into_dataclasses()[0]
 
-# Convert JSON string to dictionary
 if script_args.tracker_kwargs:
     tracker_kwargs_dict = json.loads(script_args.tracker_kwargs)
 else:
@@ -274,7 +273,6 @@ if script_args.base_model_adapter_model:
             wandb_step = cur_epoch * steps_per_epoch + cur_step
             print(f"Restored training state: epoch={cur_epoch}, step={cur_step}, wandb_step={wandb_step}")
 
-            # 打印详细信息用于调试
             print(f"Debug info:")
             print(f"Dataset size: {len(ds)}")
             print(f"Batch size: {batch_size}")
@@ -294,7 +292,7 @@ if script_args.base_model_adapter_model:
         raise RuntimeError("Failed to load adapter model")
 
 for param in model.v_head.parameters():
-    param.requires_grad = True  # 优化vhead
+    param.requires_grad = True
 
 print("Start to print all the parameters needed to be optimized!")
 for name, value in model.named_parameters():
@@ -327,7 +325,6 @@ if os.path.exists(ds_config_path):
         if 'optimizer' in ds_config:
             print("WARNING: Optimizer is still defined in DeepSpeed config!")
 
-# Then create your trainer
 ppo_trainer = TEXT2GRADTrainer(
     config,
     model,
@@ -509,7 +506,7 @@ def fuzzy_find(text, pattern, threshold=0.8):
         matching_blocks = matcher.get_matching_blocks()
         if matching_blocks:
             longest_block = max(matching_blocks, key=lambda x: x[2])
-            if longest_block[2] > len(pattern) * 0.7:  # If more than 70% matches
+            if longest_block[2] > len(pattern) * 0.7:
                 ratio = max(ratio, 0.7)
 
         if ratio > best_ratio:
